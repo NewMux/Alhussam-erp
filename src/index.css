@@ -64,6 +64,7 @@ body {
   letter-spacing: -0.022em;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* Scrollbar */
@@ -77,9 +78,6 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #c7c7cc;
   border-radius: 999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a6;
 }
 
 /* App Shell Layout */
@@ -164,6 +162,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 1.25rem 0.85rem;
+  transition: transform 0.3s ease;
 }
 
 [dir="rtl"] .sidebar {
@@ -225,6 +224,7 @@ body {
   transition: all 0.15s ease;
   border: 1px solid transparent;
   outline: none;
+  min-height: 40px;
 }
 
 .btn-primary {
@@ -266,6 +266,7 @@ body {
   padding: 0.35rem 0.7rem;
   font-size: 0.8rem;
   border-radius: 6px;
+  min-height: 34px;
 }
 
 /* Status Badges */
@@ -327,6 +328,7 @@ body {
 .table-container {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
 }
@@ -336,6 +338,7 @@ body {
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
+  min-width: 550px;
 }
 
 [dir="rtl"] .table {
@@ -380,15 +383,16 @@ body {
 
 .input, .select, .textarea {
   width: 100%;
-  padding: 0.55rem 0.8rem;
+  padding: 0.65rem 0.8rem;
   background: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-main);
   font-family: var(--font-main);
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   outline: none;
   transition: all 0.15s ease;
+  min-height: 42px;
 }
 
 .input:focus, .select:focus, .textarea:focus {
@@ -403,7 +407,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
@@ -420,7 +424,7 @@ body {
   max-width: 620px;
   max-height: 90vh;
   overflow-y: auto;
-  padding: 1.75rem;
+  padding: 1.5rem;
   box-shadow: var(--shadow-lg);
   color: var(--text-main);
   animation: appleModalFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -460,6 +464,131 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* ==========================================================================
+   MOBILE RESPONSIVE STYLES (iOS & Android Smartphone Optimization)
+   ========================================================================== */
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-only {
+    display: flex;
+  }
+
+  .app-container {
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* Top Header on Mobile */
+  .top-header {
+    height: 56px;
+    padding: 0 1rem;
+  }
+
+  .shop-title h1 {
+    font-size: 0.95rem;
+  }
+
+  .shop-title span {
+    display: none;
+  }
+
+  .header-actions {
+    gap: 0.4rem;
+  }
+
+  .header-actions .btn {
+    padding: 0.3rem 0.5rem;
+  }
+
+  /* Content Area */
+  .content-area {
+    padding: 1rem;
+    padding-bottom: 75px; /* Leave room for mobile bottom tab navigation */
+  }
+
+  /* Desktop Sidebar converted to Mobile Drawer or Bottom Nav */
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100% !important;
+    height: 62px;
+    border-right: none;
+    border-top: 1px solid var(--border-color);
+    padding: 0 0.5rem;
+    z-index: 90;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+  }
+
+  [dir="rtl"] .sidebar {
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .nav-group {
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    height: 100%;
+    gap: 0;
+  }
+
+  .nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.25rem 0.2rem;
+    font-size: 0.65rem;
+    height: 100%;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  [dir="rtl"] .nav-item {
+    text-align: center;
+  }
+
+  .nav-item span {
+    font-size: 0.65rem;
+    white-space: nowrap;
+  }
+
+  /* Layout Grids to Single Column on Mobile */
+  .grid-4, .grid-3, .grid-2 {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem;
+  }
+
+  .flex-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .flex-between > div {
+    width: 100%;
+  }
+
+  /* POS Responsive Layout */
+  .pos-mobile-container {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+
+  /* Mobile Modals */
+  .modal-content {
+    padding: 1.15rem;
+    border-radius: var(--radius-lg);
+    max-height: 85vh;
+  }
 }
 
 /* Print CSS */
