@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useERP } from '../../context/ERPContext';
-import { Customer, MeasurementProfile } from '../../types';
+import { Customer } from '../../types';
 import { MeasurementModal } from './MeasurementModal';
 import {
   Users,
@@ -36,6 +36,16 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
 
   // Measurement Modal State
   const [isMeasurementModalOpen, setIsMeasurementModalOpen] = useState(false);
+
+  useEffect(() => {
+    setSelectedCustomer((current) => {
+      if (current && customers.some((customer) => customer.id === current.id)) {
+        return current;
+      }
+
+      return customers[0] ?? null;
+    });
+  }, [customers]);
 
   const filteredCustomers = customers.filter(
     (c) =>
@@ -85,12 +95,12 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '1.5rem', height: 'calc(100vh - 120px)' }}>
+    <div className="customer-workspace">
       {/* LEFT COLUMN: Customer Table & Search */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1.25rem' }}>
+      <div className="card customer-list-panel">
         <div className="flex-between" style={{ marginBottom: '1rem' }}>
           <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Users size={20} color="var(--accent-gold)" /> Customer Database ({customers.length})
+            <Users size={20} color="var(--apple-blue)" /> Customer Database ({customers.length})
           </h3>
           <button className="btn btn-sm btn-primary" onClick={() => setIsAddModalOpen(true)}>
             <Plus size={16} /> New Customer
@@ -122,15 +132,15 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
                 style={{
                   padding: '0.85rem 1rem',
                   borderRadius: '10px',
-                  background: isSelected ? 'var(--accent-gold-subtle)' : 'var(--bg-primary)',
-                  border: isSelected ? '1px solid var(--accent-gold)' : '1px solid var(--border-color)',
+                  background: isSelected ? 'var(--apple-blue-subtle)' : 'var(--bg-primary)',
+                  border: isSelected ? '1px solid var(--apple-blue)' : '1px solid var(--border-color)',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                 }}
                 onClick={() => setSelectedCustomer(c)}
               >
                 <div className="flex-between">
-                  <div style={{ fontWeight: 600, color: isSelected ? 'var(--accent-gold)' : '#ffffff' }}>
+                  <div style={{ fontWeight: 600, color: isSelected ? 'var(--apple-blue)' : 'var(--text-main)' }}>
                     {c.name}
                   </div>
                   {hasMeas ? (
@@ -155,11 +165,11 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
 
       {/* RIGHT COLUMN: Customer Detail & Measurement History */}
       {selectedCustomer ? (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1.5rem', overflowY: 'auto' }}>
+        <div className="card customer-detail-panel">
           {/* Header Action Bar */}
           <div className="flex-between" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
             <div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#ffffff' }}>{selectedCustomer.name}</h2>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)' }}>{selectedCustomer.name}</h2>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
                 <span><Phone size={13} style={{ display: 'inline', marginRight: 4 }} />{selectedCustomer.phone}</span>
                 {selectedCustomer.email && <span><Mail size={13} style={{ display: 'inline', marginRight: 4 }} />{selectedCustomer.email}</span>}
@@ -187,7 +197,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
 
           {/* Measurements Version Timeline */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.05rem', color: 'var(--accent-gold)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h3 style={{ fontSize: '1.05rem', color: 'var(--apple-blue)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <History size={18} /> Measurement Profiles & Versions ({customerMeasurements.length})
             </h3>
 
@@ -206,7 +216,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
                     key={m.id}
                     style={{
                       background: 'var(--bg-primary)',
-                      border: m.version === latestMeasurement.version ? '1px solid var(--accent-gold)' : '1px solid var(--border-color)',
+                      border: m.version === latestMeasurement.version ? '1px solid var(--apple-blue)' : '1px solid var(--border-color)',
                       borderRadius: '12px',
                       padding: '1rem',
                     }}
@@ -235,7 +245,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
                       <div><span style={{ color: 'var(--text-muted)' }}>Inseam:</span> <strong>{m.inseam}"</strong></div>
                     </div>
 
-                    <div style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '6px', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: '0.8rem', background: 'var(--apple-gray-subtle)', padding: '0.5rem 0.75rem', borderRadius: '6px', color: 'var(--text-muted)' }}>
                       <div><strong>Styles:</strong> Fit: {m.fitPreference} | Collar: {m.collarStyle} | Pocket: {m.pocketStyle}</div>
                       {m.notes && <div><strong>Notes:</strong> {m.notes}</div>}
                     </div>
@@ -263,8 +273,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({ onOpenPOSWithCustome
             </div>
 
             {duplicateWarning && (
-              <div style={{ padding: '0.85rem', background: 'var(--accent-danger-subtle)', border: '1px solid var(--accent-danger)', borderRadius: '8px', marginBottom: '1rem', color: '#ffffff' }}>
-                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-danger)' }}>
+              <div style={{ padding: '0.85rem', background: 'var(--apple-red-subtle)', border: '1px solid rgba(255, 59, 48, 0.25)', borderRadius: '8px', marginBottom: '1rem', color: 'var(--text-main)' }}>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--apple-red)' }}>
                   <AlertTriangle size={18} /> Possible Duplicate Customer Found!
                 </div>
                 <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>

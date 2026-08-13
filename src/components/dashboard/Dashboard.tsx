@@ -21,8 +21,8 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab, onOpenPOS, onOpenNewCustomer }) => {
-  const { sales, inventory, customers, invoices, payouts } = useERP();
-  const { t, lang } = useLanguage();
+  const { sales, inventory, customers, payouts } = useERP();
+  const { t } = useLanguage();
 
   // Metrics
   const todayStr = new Date().toISOString().split('T')[0];

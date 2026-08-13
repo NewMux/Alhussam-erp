@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StaffMember, SalaryPayout } from '../../types';
+import { StaffMember } from '../../types';
 import { useERP } from '../../context/ERPContext';
 import { useAuth } from '../../context/AuthContext';
 import { Banknote, X, Save, AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -65,7 +65,7 @@ export const SalaryPayoutModal: React.FC<SalaryPayoutModalProps> = ({
         <div className="flex-between" style={{ marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
           <div>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Banknote color="var(--accent-gold)" /> Monthly Salary Payout
+              <Banknote color="var(--apple-blue)" /> Monthly Salary Payout
             </h3>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               Staff: {staffMember.name} ({staffMember.jobTitle}) | Pay Period: {payPeriod}
@@ -77,8 +77,8 @@ export const SalaryPayoutModal: React.FC<SalaryPayoutModalProps> = ({
         </div>
 
         {existingPayout && (
-          <div style={{ padding: '0.85rem', background: 'var(--accent-danger-subtle)', border: '1px solid var(--accent-danger)', borderRadius: '8px', marginBottom: '1rem', color: '#ffffff' }}>
-            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-danger)' }}>
+          <div style={{ padding: '0.85rem', background: 'var(--apple-red-subtle)', border: '1px solid var(--apple-red)', borderRadius: '8px', marginBottom: '1rem', color: 'var(--text-main)' }}>
+            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--apple-red)' }}>
               <AlertTriangle size={18} /> Duplicate Payout Prevention Warning!
             </div>
             <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
@@ -88,7 +88,7 @@ export const SalaryPayoutModal: React.FC<SalaryPayoutModalProps> = ({
         )}
 
         {errorMessage && (
-          <div style={{ padding: '0.85rem', background: 'var(--accent-danger-subtle)', border: '1px solid var(--accent-danger)', borderRadius: '8px', marginBottom: '1rem', color: 'var(--accent-danger)' }}>
+          <div style={{ padding: '0.85rem', background: 'var(--apple-red-subtle)', border: '1px solid var(--apple-red)', borderRadius: '8px', marginBottom: '1rem', color: 'var(--apple-red)' }}>
             {errorMessage}
           </div>
         )}
@@ -133,10 +133,10 @@ export const SalaryPayoutModal: React.FC<SalaryPayoutModalProps> = ({
           </div>
 
           {/* Calculated Net Output Card */}
-          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--accent-gold)', borderRadius: '10px', padding: '1rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--apple-blue)', borderRadius: '10px', padding: '1rem', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Net Salary Payable:</span>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--accent-gold)' }}>
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--apple-blue)' }}>
                 BHD {netSalary.toFixed(3)}
               </div>
             </div>

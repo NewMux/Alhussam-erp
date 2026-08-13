@@ -15,16 +15,18 @@ import {
 
 interface CommandPaletteProps {
   isOpen: boolean;
+  onOpen: () => void;
   onClose: () => void;
   onSelectTab: (tab: string) => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
+  onOpen,
   onClose,
   onSelectTab,
 }) => {
-  const { customers, inventory, invoices } = useERP();
+  const { customers, inventory } = useERP();
   const { t, lang } = useLanguage();
   const [query, setQuery] = useState('');
 
@@ -32,8 +34,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        if (isOpen) onClose();
-        else setQuery('');
+        if (isOpen) {
+          onClose();
+        } else {
+          setQuery('');
+          onOpen();
+        }
       }
       if (e.key === 'Escape' && isOpen) {
         onClose();
@@ -41,7 +47,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onOpen]);
 
   if (!isOpen) return null;
 

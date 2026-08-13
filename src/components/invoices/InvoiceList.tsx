@@ -5,10 +5,8 @@ import { InvoiceModal } from './InvoiceModal';
 import {
   FileText,
   Search,
-  Printer,
   CheckCircle2,
   Clock,
-  MessageSquare,
   Eye,
 } from 'lucide-react';
 
@@ -37,7 +35,7 @@ export const InvoiceList: React.FC = () => {
         <div className="flex-between">
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <FileText color="var(--accent-gold)" /> Customer Invoice Management
+              <FileText color="var(--apple-blue)" /> Customer Invoice Management
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               Generate, print, and track professional ERP invoices linked directly to counter sales.
@@ -46,7 +44,7 @@ export const InvoiceList: React.FC = () => {
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Filtered Invoices Total:</span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-gold)' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--apple-blue)' }}>
               BHD {totalBhd.toFixed(3)}
             </div>
           </div>
@@ -108,7 +106,7 @@ export const InvoiceList: React.FC = () => {
               ) : (
                 filteredInvoices.map((inv) => (
                   <tr key={inv.id}>
-                    <td style={{ fontWeight: 700, color: 'var(--accent-gold)' }}>{inv.invoiceNumber}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--apple-blue)' }}>{inv.invoiceNumber}</td>
                     <td>{inv.issuedDate}</td>
                     <td>
                       <div style={{ fontWeight: 600 }}>{inv.customerName}</div>

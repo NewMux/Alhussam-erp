@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useERP } from '../../context/ERPContext';
 import { Customer, CartItem, ProductOrService, PaymentMethod, PaymentStatus, Sale } from '../../types';
 import { POSReceiptModal } from './POSReceiptModal';
@@ -14,7 +14,11 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 
-export const POS: React.FC = () => {
+interface POSProps {
+  initialCustomerId?: string;
+}
+
+export const POS: React.FC<POSProps> = ({ initialCustomerId }) => {
   const {
     products,
     customers,
@@ -28,13 +32,22 @@ export const POS: React.FC = () => {
   // Selected customer
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!initialCustomerId) {
+      setSelectedCustomer(null);
+      return;
+    }
+
+    setSelectedCustomer(customers.find((customer) => customer.id === initialCustomerId) ?? null);
+  }, [customers, initialCustomerId]);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
 
   // Cart
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BenefitPay Card');
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Paid');
+  const [paymentStatus] = useState<PaymentStatus>('Paid');
   const [notes, setNotes] = useState('');
 
   // Mobile View Switcher ('catalog' | 'cart')
@@ -160,7 +173,7 @@ export const POS: React.FC = () => {
   );
 
   return (
-    <div className="pos-mobile-container" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1.25rem', height: 'calc(100vh - 120px)' }}>
+    <div className="pos-mobile-container">
       {/* Mobile Top View Switcher */}
       <div className="mobile-only" style={{ gap: '0.5rem', marginBottom: '0.5rem' }}>
         <button
@@ -180,7 +193,7 @@ export const POS: React.FC = () => {
       </div>
 
       {/* LEFT PANEL: Catalog Selector (Visible on Desktop OR Mobile Catalog View) */}
-      <div style={{ display: mobileActiveView === 'catalog' ? 'flex' : 'none', flexDirection: 'column', gap: '1rem', overflow: 'hidden' }}>
+      <div className={`pos-catalog-panel ${mobileActiveView === 'catalog' ? 'mobile-active' : 'mobile-hidden'}`}>
         {/* Customer Banner in POS */}
         <div className="card" style={{ padding: '0.85rem 1.25rem', background: '#ffffff' }}>
           <div className="flex-between">
@@ -279,7 +292,7 @@ export const POS: React.FC = () => {
       </div>
 
       {/* RIGHT PANEL: POS Checkout Cart (Visible on Desktop OR Mobile Cart View) */}
-      <div className="card" style={{ display: mobileActiveView === 'cart' ? 'flex' : 'none', flexDirection: 'column', height: '100%', padding: '1.15rem', background: '#ffffff' }}>
+      <div className={`card pos-cart-panel ${mobileActiveView === 'cart' ? 'mobile-active' : 'mobile-hidden'}`} style={{ padding: '1.15rem', background: '#ffffff' }}>
         <div className="card-header" style={{ marginBottom: '0.75rem' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
             <button className="btn btn-sm btn-secondary mobile-only" onClick={() => setMobileActiveView('catalog')} style={{ padding: '0.2rem 0.4rem' }}>

@@ -8,10 +8,7 @@ import {
   Calendar,
   Award,
   Banknote,
-  Plus,
   CheckCircle2,
-  XCircle,
-  Clock,
   UserCheck,
 } from 'lucide-react';
 
@@ -45,7 +42,7 @@ export const StaffList: React.FC = () => {
         <div className="flex-between">
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Users2 color="var(--accent-gold)" /> Staff Roster, Attendance & Payroll Management
+              <Users2 color="var(--apple-blue)" /> Staff Roster, Attendance & Payroll Management
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               Record daily attendance, track tailor production output, calculate commissions, and execute monthly salary payouts.
@@ -215,10 +212,10 @@ export const StaffList: React.FC = () => {
                 {performance.map((p) => (
                   <tr key={p.id}>
                     <td>{p.date}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--accent-gold)' }}>{p.staffName}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--apple-blue)' }}>{p.staffName}</td>
                     <td>{p.metric}</td>
                     <td style={{ fontWeight: 600 }}>{p.units} Unit(s)</td>
-                    <td style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>
+                    <td style={{ fontWeight: 700, color: 'var(--apple-green)' }}>
                       BHD {p.commissionEarned.toFixed(3)}
                     </td>
                     <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{p.notes || '-'}</td>
@@ -272,13 +269,13 @@ export const StaffList: React.FC = () => {
                 ) : (
                   payouts.map((p) => (
                     <tr key={p.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--accent-gold)' }}>{p.id}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--apple-blue)' }}>{p.id}</td>
                       <td>{p.payPeriod}</td>
                       <td style={{ fontWeight: 600 }}>{p.staffName}</td>
                       <td>BHD {p.baseSalary.toFixed(3)}</td>
-                      <td style={{ color: 'var(--accent-emerald)' }}>+ BHD {p.performanceBonus.toFixed(3)}</td>
-                      <td style={{ color: 'var(--accent-danger)' }}>- BHD {p.deductions.toFixed(3)}</td>
-                      <td style={{ fontWeight: 800, color: '#ffffff', fontSize: '1rem' }}>
+                      <td style={{ color: 'var(--apple-green)' }}>+ BHD {p.performanceBonus.toFixed(3)}</td>
+                      <td style={{ color: 'var(--apple-red)' }}>- BHD {p.deductions.toFixed(3)}</td>
+                      <td style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '1rem' }}>
                         BHD {p.netSalary.toFixed(3)}
                       </td>
                       <td>

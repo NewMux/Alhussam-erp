@@ -45,7 +45,7 @@ export const InventoryList: React.FC = () => {
         <div className="flex-between">
           <div>
             <h2 style={{ fontSize: '1.3rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Boxes color="var(--accent-gold)" /> Inventory & Fabric Roll Management
+              <Boxes color="var(--apple-blue)" /> Inventory & Fabric Roll Management
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               Track fabric rolls, meterage balances, low-stock thresholds, and auditable material movements.
@@ -65,11 +65,11 @@ export const InventoryList: React.FC = () => {
 
       {/* Low Stock Alert Header Banner */}
       {lowStockItems.length > 0 && (
-        <div style={{ padding: '1rem', background: 'var(--accent-danger-subtle)', border: '1px solid var(--accent-danger)', borderRadius: '12px', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '1rem', background: 'var(--apple-red-subtle)', border: '1px solid rgba(255, 59, 48, 0.25)', borderRadius: '12px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <AlertTriangle size={24} color="var(--accent-danger)" />
+            <AlertTriangle size={24} color="var(--apple-red)" />
             <div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--accent-danger)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--apple-red)' }}>
                 Attention Required: {lowStockItems.length} Fabric/Material item(s) are below minimum threshold!
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -138,7 +138,7 @@ export const InventoryList: React.FC = () => {
 
                   return (
                     <tr key={item.id}>
-                      <td style={{ fontWeight: 700, color: 'var(--accent-gold)' }}>{item.code}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--apple-blue)' }}>{item.code}</td>
                       <td>
                         <div style={{ fontWeight: 600 }}>{item.name}</div>
                       </td>

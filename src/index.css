@@ -123,6 +123,54 @@ input, textarea, [contenteditable="true"] {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Client workspace */
+.customer-workspace {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.85fr) minmax(0, 1.65fr);
+  gap: 1.25rem;
+  min-height: calc(100dvh - 112px);
+}
+
+.customer-list-panel,
+.customer-detail-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.customer-list-panel {
+  min-height: 0;
+}
+
+.customer-list-panel > div:last-child {
+  min-height: 0;
+}
+
+.customer-detail-panel {
+  overflow-y: auto;
+}
+
+/* POS workspace */
+.pos-mobile-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+  gap: 1.25rem;
+  min-height: calc(100dvh - 112px);
+}
+
+.pos-catalog-panel,
+.pos-cart-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pos-catalog-panel {
+  gap: 1rem;
+  overflow: hidden;
+}
+
 /* Top Header */
 .top-header {
   height: 64px;
@@ -649,10 +697,32 @@ input, textarea, [contenteditable="true"] {
     width: 100%;
   }
 
+  /* Client workspace */
+  .customer-workspace {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .customer-list-panel {
+    max-height: min(50dvh, 460px);
+  }
+
+  .customer-detail-panel {
+    overflow: visible;
+  }
+
   /* POS Responsive Layout */
   .pos-mobile-container {
-    grid-template-columns: 1fr !important;
-    height: auto !important;
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .pos-mobile-container .mobile-hidden {
+    display: none !important;
+  }
+
+  .pos-mobile-container .mobile-active {
+    display: flex !important;
   }
 
   /* Mobile Bottom Sheet Modals */
