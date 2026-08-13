@@ -20,6 +20,7 @@ interface SidebarProps {
 interface NavMenuItem {
   id: string;
   labelKey: keyof typeof import('../../services/i18n').translations['en'];
+  shortLabel: string;
   icon: React.ReactNode;
   roles: UserRole[];
 }
@@ -32,42 +33,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     {
       id: 'dashboard',
       labelKey: 'dashboard',
+      shortLabel: 'Overview',
       icon: <LayoutDashboard size={18} />,
       roles: ['admin', 'sales', 'tailor', 'inventory', 'payroll'],
     },
     {
       id: 'pos',
       labelKey: 'pos',
+      shortLabel: 'POS',
       icon: <ShoppingCart size={18} />,
       roles: ['admin', 'sales'],
     },
     {
       id: 'customers',
       labelKey: 'customers',
+      shortLabel: 'Clients',
       icon: <Users size={18} />,
       roles: ['admin', 'sales', 'tailor'],
     },
     {
       id: 'invoices',
       labelKey: 'invoices',
+      shortLabel: 'Invoices',
       icon: <FileText size={18} />,
       roles: ['admin', 'sales', 'payroll'],
     },
     {
       id: 'inventory',
       labelKey: 'inventory',
+      shortLabel: 'Stock',
       icon: <Boxes size={18} />,
       roles: ['admin', 'inventory'],
     },
     {
       id: 'payroll',
       labelKey: 'payroll',
+      shortLabel: 'Payroll',
       icon: <Users2 size={18} />,
       roles: ['admin', 'payroll'],
     },
     {
       id: 'admin',
       labelKey: 'admin',
+      shortLabel: 'Admin',
       icon: <ShieldCheck size={18} />,
       roles: ['admin'],
     },
@@ -87,7 +95,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
               onClick={() => setActiveTab(item.id)}
             >
               {item.icon}
-              <span>{t[item.labelKey]}</span>
+              <span className="desktop-label">{t[item.labelKey]}</span>
+              <span className="mobile-label">{item.shortLabel}</span>
             </button>
           );
         })}

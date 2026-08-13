@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useERP } from '../../context/ERPContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -13,6 +13,7 @@ import {
   Building2,
   Globe,
   Command,
+  MoreVertical,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -30,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette }) => {
     resetDemoData,
   } = useERP();
   const { lang, toggleLanguage, t } = useLanguage();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleSync = () => {
     const res = syncOfflineSales();
@@ -54,14 +56,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette }) => {
         </div>
         <div className="shop-title">
           <h1>{lang === 'ar' && settings.arabicShopName ? settings.arabicShopName : settings.shopName}</h1>
-          <span>
+          <span className="desktop-only">
             <Building2 size={12} style={{ display: 'inline', marginRight: 4, marginLeft: 4 }} />
             {settings.crNumber} • {settings.currency}
           </span>
         </div>
       </div>
 
-      <div className="header-actions">
+      {/* Desktop Header Actions */}
+      <div className="header-actions desktop-actions">
         {/* Command Palette Trigger */}
         <button
           className="btn btn-sm btn-secondary"
@@ -147,6 +150,73 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette }) => {
           <RotateCcw size={13} />
         </button>
       </div>
+
+      {/* Mobile Header Actions Toggle */}
+      <div className="mobile-actions-toggle">
+        <button
+          className="btn btn-sm btn-secondary"
+          onClick={toggleLanguage}
+          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}
+        >
+          <Globe size={13} /> {lang === 'en' ? 'عربي' : 'EN'}
+        </button>
+        <button
+          className="btn btn-sm btn-secondary"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          style={{ padding: '0.25rem 0.4rem' }}
+        >
+          <MoreVertical size={16} />
+        </button>
+      </div>
+
+      {/* Mobile Actions Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="mobile-actions-drawer"
+          style={{
+            position: 'absolute',
+            top: '56px',
+            right: '1rem',
+            background: '#ffffff',
+            border: '1px solid var(--border-color)',
+            borderRadius: '12px',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '0.85rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem',
+            zIndex: 999,
+            minWidth: '220px',
+          }}
+        >
+          <button className="btn btn-sm btn-secondary" onClick={() => { onOpenCommandPalette(); setIsMobileMenuOpen(false); }}>
+            <Command size={14} color="var(--apple-blue)" /> Search (Cmd + K)
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={() => { toggleSimulatedOffline(); setIsMobileMenuOpen(false); }}>
+            {isSimulatedOffline ? <><WifiOff size={14} /> Offline Mode</> : <><Wifi size={14} color="var(--apple-green)" /> Network Online</>}
+          </button>
+          {offlineQueue.length > 0 && (
+            <button className="btn btn-sm btn-primary" onClick={() => { handleSync(); setIsMobileMenuOpen(false); }}>
+              Sync ({offlineQueue.length})
+            </button>
+          )}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Role: {currentUser.name}</span>
+            <select
+              className="select"
+              style={{ marginTop: '0.25rem', padding: '0.3rem', fontSize: '0.8rem' }}
+              value={currentUser.role}
+              onChange={(e) => { switchRole(e.target.value as UserRole); setIsMobileMenuOpen(false); }}
+            >
+              <option value="admin">Owner / Admin</option>
+              <option value="sales">Sales Staff</option>
+              <option value="tailor">Tailor Staff</option>
+              <option value="inventory">Inventory Manager</option>
+              <option value="payroll">Payroll Manager</option>
+            </select>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
