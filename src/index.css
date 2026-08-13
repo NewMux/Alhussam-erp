@@ -2,7 +2,7 @@
 
 :root {
   /* Apple Light Mode Design System Tokens */
-  --bg-primary: #f5f5f7;
+  --bg-primary: #f2f2f7;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
   --bg-card-hover: #f9f9fb;
@@ -33,10 +33,10 @@
   --border-color: #e5e5ea;
   --border-color-hover: #d1d1d6;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
 
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.06);
@@ -53,6 +53,15 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -63,17 +72,24 @@ body {
   font-weight: 400;
   letter-spacing: -0.022em;
   -webkit-font-smoothing: antialiased;
-  min-height: 100vh;
-  overflow-x: hidden;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection inside inputs and textareas */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #c7c7cc;
@@ -84,6 +100,7 @@ body {
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
 }
@@ -93,6 +110,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg-primary);
   position: relative;
@@ -100,32 +118,35 @@ body {
 
 .content-area {
   flex: 1;
-  padding: 1.75rem 2.25rem;
+  padding: 1.5rem 2rem;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Top Header */
 .top-header {
   height: 64px;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2.25rem;
+  padding: 0 1.75rem;
   z-index: 10;
+  padding-top: env(safe-area-inset-top);
 }
 
 .shop-branding {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.75rem;
 }
 
 .shop-logo-badge {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   background: var(--apple-blue);
   color: #ffffff;
   border-radius: var(--radius-sm);
@@ -133,7 +154,7 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.3);
+  box-shadow: 0 3px 10px rgba(0, 113, 227, 0.28);
 }
 
 .shop-title h1 {
@@ -152,7 +173,7 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.75rem;
 }
 
 .mobile-actions-toggle {
@@ -207,6 +228,10 @@ body {
   text-align: left;
 }
 
+.nav-item:active {
+  transform: scale(0.98);
+}
+
 [dir="rtl"] .nav-item {
   text-align: right;
 }
@@ -220,43 +245,46 @@ body {
   background: var(--apple-blue);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.25);
+  box-shadow: 0 3px 10px rgba(0, 113, 227, 0.25);
 }
 
-/* Apple Light Buttons */
+/* Apple Native App Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding: 0.55rem 1.1rem;
-  border-radius: var(--radius-sm);
+  padding: 0.6rem 1.15rem;
+  border-radius: var(--radius-md);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid transparent;
   outline: none;
-  min-height: 40px;
+  min-height: 44px;
+}
+
+.btn:active {
+  transform: scale(0.96);
+  opacity: 0.9;
 }
 
 .btn-primary {
   background: var(--apple-blue);
   color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.2);
+  box-shadow: 0 3px 10px rgba(0, 113, 227, 0.25);
 }
 
 .btn-primary:hover {
   background: var(--apple-blue-hover);
-  transform: translateY(-0.5px);
 }
 
 .btn-secondary {
   background: #ffffff;
   color: var(--text-main);
   border: 1px solid var(--border-color);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
 }
 
 .btn-secondary:hover {
@@ -267,7 +295,6 @@ body {
 .btn-success {
   background: var(--apple-green);
   color: #ffffff;
-  font-weight: 600;
 }
 
 .btn-danger {
@@ -278,8 +305,8 @@ body {
 .btn-sm {
   padding: 0.35rem 0.7rem;
   font-size: 0.8rem;
-  border-radius: 6px;
-  min-height: 34px;
+  border-radius: 8px;
+  min-height: 36px;
 }
 
 /* Status Badges */
@@ -317,7 +344,7 @@ body {
   background: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 1.35rem;
+  padding: 1.25rem;
   box-shadow: var(--shadow-sm);
 }
 
@@ -351,7 +378,7 @@ body {
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
-  min-width: 550px;
+  min-width: 520px;
 }
 
 [dir="rtl"] .table {
@@ -396,16 +423,16 @@ body {
 
 .input, .select, .textarea {
   width: 100%;
-  padding: 0.65rem 0.8rem;
+  padding: 0.65rem 0.85rem;
   background: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-main);
   font-family: var(--font-main);
-  font-size: 0.9rem;
+  font-size: 0.925rem;
   outline: none;
   transition: all 0.15s ease;
-  min-height: 42px;
+  min-height: 44px;
 }
 
 .input:focus, .select:focus, .textarea:focus {
@@ -421,7 +448,8 @@ body {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -434,19 +462,19 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
   width: 100%;
-  max-width: 620px;
-  max-height: 90vh;
+  max-width: 600px;
+  max-height: 88vh;
   overflow-y: auto;
   padding: 1.5rem;
   box-shadow: var(--shadow-lg);
   color: var(--text-main);
-  animation: appleModalFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: appleModalFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes appleModalFade {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
   to {
     opacity: 1;
@@ -480,7 +508,7 @@ body {
 }
 
 /* ==========================================================================
-   MOBILE RESPONSIVE STYLES (iOS & Android Smartphone Optimization)
+   NATIVE SMARTPHONE APP LAYOUT (iOS & Android Native App Feel)
    ========================================================================== */
 
 .mobile-only {
@@ -517,43 +545,49 @@ body {
   .app-container {
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
   }
 
-  /* Top Header on Mobile */
+  /* Native Mobile Header */
   .top-header {
-    height: 54px;
+    height: 56px;
     padding: 0 1rem;
+    padding-top: env(safe-area-inset-top);
   }
 
   .shop-title h1 {
-    font-size: 0.9rem;
+    font-size: 0.925rem;
+    font-weight: 700;
   }
 
-  /* Content Area */
+  /* Content Area with iOS Bottom Safe Area Inset */
   .content-area {
     padding: 0.85rem;
-    padding-bottom: 75px; /* Leave room for mobile bottom tab navigation */
+    padding-bottom: calc(75px + env(safe-area-inset-bottom));
   }
 
-  /* Desktop Sidebar converted to Mobile Drawer or Bottom Nav */
+  /* NATIVE APP BOTTOM TAB BAR */
   .sidebar {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100% !important;
-    height: 60px;
+    height: calc(64px + env(safe-area-inset-bottom));
     border-right: none;
-    border-top: 1px solid var(--border-color);
-    padding: 0 0.25rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 0.25rem 0.25rem;
+    padding-bottom: env(safe-area-inset-bottom);
     z-index: 90;
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
   }
 
   [dir="rtl"] .sidebar {
     border-left: none;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
   }
 
   .nav-group {
@@ -567,20 +601,35 @@ body {
   .nav-item {
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     gap: 0.1rem;
-    padding: 0.2rem 0.1rem;
+    padding: 0.35rem 0.1rem;
     font-size: 0.65rem;
     height: 100%;
-    border-radius: 6px;
+    border-radius: 10px;
     text-align: center;
+    color: #8e8e93;
+    transition: all 0.15s ease;
+  }
+
+  .nav-item:active {
+    transform: scale(0.9);
   }
 
   [dir="rtl"] .nav-item {
     text-align: center;
   }
 
+  .nav-item.active {
+    background: var(--apple-blue-subtle);
+    color: var(--apple-blue);
+    font-weight: 700;
+    box-shadow: none;
+  }
+
   .nav-item span {
     font-size: 0.625rem;
+    font-weight: 600;
     white-space: nowrap;
   }
 
@@ -606,11 +655,13 @@ body {
     height: auto !important;
   }
 
-  /* Mobile Modals */
+  /* Mobile Bottom Sheet Modals */
   .modal-content {
-    padding: 1.15rem;
-    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    border-radius: 20px;
     max-height: 85vh;
+    width: 95%;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
   }
 }
 

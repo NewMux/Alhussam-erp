@@ -1,0 +1,16 @@
+{
+  "short_name": "Tailor ERP",
+  "name": "Al-Mamlaka Haute Couture & Tailoring ERP",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": ".",
+  "background_color": "#ffffff",
+  "theme_color": "#0071e3",
+  "display": "standalone",
+  "orientation": "portrait"
+}
