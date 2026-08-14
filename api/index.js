@@ -1040,12 +1040,35 @@ var HttpError = class extends Error {
 var ForbiddenError = (msg) => new HttpError(403, msg);
 
 // server/_core/sdk.ts
-import { createClient } from "@supabase/supabase-js";
-var supabase = createClient(ENV.supabaseUrl, ENV.supabaseAnonKey);
+var SUPABASE_AUTH_USER_URL = "https://cevoyflcdsdkhigyunlv.supabase.co/auth/v1/user";
+async function getSupabaseUser(accessToken) {
+  if (!ENV.supabaseAnonKey) {
+    throw ForbiddenError("Server authentication is not configured");
+  }
+  let response;
+  try {
+    response = await fetch(SUPABASE_AUTH_USER_URL, {
+      headers: {
+        apikey: ENV.supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+  } catch {
+    throw ForbiddenError("Session verification unavailable");
+  }
+  if (!response.ok) {
+    throw ForbiddenError("Invalid session");
+  }
+  const data = await response.json();
+  if (!data?.id) {
+    throw ForbiddenError("Invalid session");
+  }
+  return data;
+}
 var SDKServer = class {
   /**
    * Verifies the Supabase access token sent as `Authorization: Bearer <token>`
-   * against Supabase's own auth server, then syncs it to our app-level
+   * against the Supabase Auth user endpoint, then syncs it to the app-level
    * `users` row (role/pending-approval gating lives there, not in Supabase).
    */
   async authenticateRequest(req) {
@@ -1054,20 +1077,17 @@ var SDKServer = class {
     if (!token) {
       throw ForbiddenError("Missing session");
     }
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) {
-      throw ForbiddenError("Invalid session");
-    }
-    const metadata = data.user.user_metadata;
-    const name = typeof metadata?.name === "string" && metadata.name || typeof metadata?.full_name === "string" && metadata.full_name || data.user.email || "";
+    const authUser = await getSupabaseUser(token);
+    const metadata = authUser.user_metadata;
+    const name = typeof metadata?.name === "string" && metadata.name || typeof metadata?.full_name === "string" && metadata.full_name || authUser.email || "";
     await upsertUser({
-      openId: data.user.id,
+      openId: authUser.id,
       name,
-      email: data.user.email ?? null,
+      email: authUser.email ?? null,
       loginMethod: "supabase",
       lastSignedIn: /* @__PURE__ */ new Date()
     });
-    const user = await getUserByOpenId(data.user.id);
+    const user = await getUserByOpenId(authUser.id);
     if (!user) {
       throw ForbiddenError("User not found");
     }
