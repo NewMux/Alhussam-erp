@@ -22,14 +22,8 @@ export default function AuthGate() {
 
     try {
       if (mode === "login") {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
-        if (data.session) {
-          // Start a fresh application session after authentication so the first
-          // auth.me request reliably carries the newly issued bearer token.
-          window.location.assign("/");
-          return;
-        }
       } else {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,

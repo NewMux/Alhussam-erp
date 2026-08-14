@@ -5,25 +5,43 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export function useAuth() {
   const utils = trpc.useUtils();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
 
+  // Do not request the ERP profile until Supabase has restored local session
+  // storage. Otherwise the initial auth.me request can be cached as anonymous.
   const meQuery = trpc.auth.me.useQuery(undefined, {
+    enabled: hasSession === true,
     retry: false,
     refetchOnWindowFocus: false,
   });
 
-  // Re-fetch the app-level profile whenever Supabase's session changes
-  // (sign-in, sign-out, or token refresh).
   useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange(() => {
-      utils.auth.me.invalidate();
+    let active = true;
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) setHasSession(Boolean(data.session));
     });
-    return () => subscription.subscription.unsubscribe();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session));
+      if (session) {
+        void utils.auth.me.invalidate();
+      } else {
+        utils.auth.me.setData(undefined, null);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.subscription.unsubscribe();
+    };
   }, [utils]);
 
   const logout = useCallback(async () => {
     setLoggingOut(true);
     try {
       await supabase.auth.signOut();
+      setHasSession(false);
       utils.auth.me.setData(undefined, null);
     } finally {
       setLoggingOut(false);
@@ -33,11 +51,11 @@ export function useAuth() {
   const state = useMemo(
     () => ({
       user: meQuery.data ?? null,
-      loading: meQuery.isLoading || loggingOut,
+      loading: hasSession === null || (hasSession === true && meQuery.isLoading) || loggingOut,
       error: meQuery.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
+      isAuthenticated: hasSession === true && Boolean(meQuery.data),
     }),
-    [meQuery.data, meQuery.error, meQuery.isLoading, loggingOut]
+    [hasSession, meQuery.data, meQuery.error, meQuery.isLoading, loggingOut]
   );
 
   return {
