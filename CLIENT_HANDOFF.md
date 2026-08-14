@@ -29,9 +29,9 @@ The point of sale is intentionally aligned to the active inventory records. It p
 5. Create a test sale, check the inventory deduction and audit entry, then print the resulting invoice from the client’s actual browser and printer.
 6. Set a backup schedule and nominate a business owner responsible for stock adjustments, payroll approvals, and role changes.
 
-## Externally managed hosting requirements
+## Hosting requirements
 
-The current app is a Node.js 22 application using React/Vite on the frontend, Express/tRPC on the backend, Drizzle ORM, and MySQL/TiDB-compatible storage. The verified production commands are:
+The app is a single Node.js 22 service: React/Vite frontend, Express/tRPC backend, Drizzle ORM, MySQL/TiDB-compatible storage. In production the Express server itself serves the built frontend (`dist/public`), so frontend and API are one deployable unit on one origin — no separate static host is needed. The verified production commands are:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -39,16 +39,25 @@ pnpm build
 pnpm start
 ```
 
-The host must expose the application through HTTPS, provide a managed MySQL-compatible database, inject secrets securely, and configure the application’s external base URL. It must not commit `.env` files, credentials, or database dumps to source control.
+Authentication is self-contained email/password (no external identity provider or third-party OAuth service required). A `railway.toml` is included for deploying to Railway (build, start, and a pre-deploy step that applies pending database migrations), but any Node 22 host that can run a persistent process works.
 
-| Required configuration category | Purpose |
+The host must expose the application through HTTPS, provide a managed MySQL-compatible database, and inject secrets securely. It must not commit `.env` files, credentials, or database dumps to source control.
+
+| Required env var | Purpose |
 |---|---|
 | `DATABASE_URL` | MySQL/TiDB connection used by Drizzle and all ERP data operations. Require TLS where the database provider supports it. |
-| Session and authentication configuration | The current implementation uses the integrated Manus OAuth/session layer. A move to a non-Manus host requires a compatible authentication migration or continued access to the configured OAuth service and callback URLs. This is a pre-launch dependency, not a cosmetic setting. |
-| Public application/OAuth URLs | Must match the final HTTPS domain and callback URLs exactly. |
-| Server-side service credentials | Required only when the client enables the corresponding storage, notification, or platform services. Never expose server credentials to the browser. |
+| `JWT_SECRET` | Signs and verifies session cookies. Generate a long random value (e.g. `openssl rand -hex 32`) and never reuse it across environments. |
+| `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
+| `NODE_ENV` | Set to `production`. |
+| `PORT` | Usually injected automatically by the host (e.g. Railway); the app also self-selects a free port if unset. |
 
-> **External-hosting decision:** The managed hosting route supports custom domains and remains the lowest-risk option for the current authentication integration. If the client chooses another hosting provider, the hosting team should first validate the OAuth callback/session model in a staging environment; a direct lift-and-shift has not been certified outside the integrated deployment environment.
+Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
+
+### First-time setup on a fresh database
+
+1. Provision the MySQL/TiDB database and set `DATABASE_URL`.
+2. Run `pnpm exec drizzle-kit migrate` once (or let the host's pre-deploy step do it) to create all tables.
+3. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
 
 ## Go-live acceptance test
 
