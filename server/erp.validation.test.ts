@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import type { TrpcContext } from "./_core/context";
+import { appRouter } from "./routers";
+import { getMonthWindow } from "./erp";
+
+function context(): TrpcContext {
+  return { user: { id: 1, openId: "test-user", name: "Test User", email: "test@example.com", loginMethod: "manus", role: "user", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() }, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] };
+}
+
+describe("ERP input contracts", () => {
+  it("rejects a counter sale with no lines before business processing", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.sales.create({ customerName: "Walk-in", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("rejects malformed customer input before persistence", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.customers.create({ name: "A", phone: "1", email: "invalid-email", address: "", notes: "", preferredContact: "WhatsApp" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("rejects a manual sale whose discount exceeds its subtotal before persistence", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.salesHistory.createManual({ customerName: "Walk-in customer", customerPhone: "", description: "Alteration service", quantity: 1, unitPrice: 10, discount: 11, paymentMethod: "cash", paymentStatus: "paid", notes: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("calculates inclusive UTC month boundaries for monthly reporting", () => {
+    const window = getMonthWindow("2026-02");
+    expect(window.start.toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    expect(window.end.toISOString()).toBe("2026-02-28T23:59:59.999Z");
+  });
+  it("rejects a malformed staff access invitation before persistence", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.access.inviteStaff({ name: "A", email: "not-an-email", customRoleId: 1 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("rejects an incomplete owner approval before access changes", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.access.approvePending({ requestId: 0, customRoleId: 0, note: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("rejects exact-permission approval without a pending request or permissions", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.accessApproval.approveWithPermissions({ requestId: 0, name: "A", description: "", permissions: [], note: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+});
