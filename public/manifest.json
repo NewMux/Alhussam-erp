@@ -1,16 +1,20 @@
 {
+  "id": "/",
   "short_name": "Tailor ERP",
-  "name": "Al-Mamlaka Haute Couture & Tailoring ERP",
+  "name": "Al-Mamlaka Tailor ERP",
+  "description": "Mobile workspace for tailoring, counter sales, inventory, invoicing, and staff access.",
   "icons": [
     {
-      "src": "favicon.svg",
+      "src": "/favicon.svg",
       "type": "image/svg+xml",
-      "sizes": "192x192 512x512"
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
-  "background_color": "#ffffff",
-  "theme_color": "#0071e3",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#fbfaf5",
+  "theme_color": "#1d496b",
   "display": "standalone",
   "orientation": "portrait"
 }

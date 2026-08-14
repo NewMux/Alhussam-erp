@@ -7,6 +7,12 @@ import superjson from "superjson";
 import App from "./App";
 import "./index.css";
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(error => console.warn("Offline shell unavailable", error));
+  });
+}
+
 const queryClient = new QueryClient();
 
 // Unauthorized errors are handled in-place by each screen (DashboardLayout
