@@ -39,24 +39,23 @@ pnpm build
 pnpm start
 ```
 
-Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server only verifies the resulting access token. A `railway.toml` is included for deploying the Node service to Railway (build, start, and a pre-deploy step that applies pending database migrations to Supabase's Postgres), but any Node 22 host that can run a persistent process works.
+Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server verifies the resulting access token by calling Supabase's own `/auth/v1/user` endpoint (no separate JWT secret to manage). A `railway.toml` is included for deploying the Node service to Railway (build, start, and a pre-deploy step that applies pending database migrations to Supabase's Postgres), but any Node 22 host that can run a persistent process works.
 
 The host must expose the application through HTTPS and inject secrets securely. It must not commit `.env` files, credentials, or database dumps to source control.
 
 | Required env var | Purpose |
 |---|---|
 | `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for external hosts. |
-| `SUPABASE_JWT_SECRET` | Project Settings → API → JWT Settings → JWT Secret. Verifies Supabase-issued access tokens server-side. |
 | `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
 | `NODE_ENV` | Set to `production`. |
 | `PORT` | Usually injected automatically by the host (e.g. Railway); the app also self-selects a free port if unset. |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** — must be set before `pnpm build` runs, not just at runtime. |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** (must be set before `pnpm build` runs) and also read server-side to verify tokens. |
 
 Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
 
 ### First-time setup on a fresh Supabase project
 
-1. Create the Supabase project. Grab the Postgres connection string (`DATABASE_URL`), the JWT secret (`SUPABASE_JWT_SECRET`), the project URL and anon key (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) from Project Settings.
+1. Create the Supabase project. Grab the Postgres connection string (`DATABASE_URL`) and the project URL and anon key (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) from Project Settings.
 2. In Supabase Auth settings, confirm the Email provider is enabled. Decide whether to require email confirmation before sign-in (Authentication → Providers → Email) — the app's sign-up form handles both cases.
 3. Run `pnpm exec drizzle-kit migrate` once (or let the host's pre-deploy step do it) to create all tables in the Supabase database.
 4. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).

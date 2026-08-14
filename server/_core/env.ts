@@ -1,8 +1,10 @@
 export const ENV = {
   databaseUrl: process.env.DATABASE_URL ?? "",
-  // Shared secret used to verify Supabase-issued JWTs (Supabase dashboard →
-  // Project Settings → API → JWT Settings → JWT Secret).
-  supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET ?? "",
+  // Same project the client uses (VITE_-prefixed so Vite also inlines them
+  // into the browser bundle). Used server-side to verify access tokens via
+  // Supabase's own /auth/v1/user endpoint — no separate JWT secret needed.
+  supabaseUrl: process.env.VITE_SUPABASE_URL ?? "",
+  supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY ?? "",
   // Email address (case-insensitive) that is automatically granted the admin
   // role the first time it signs in. Set this to the shop owner's login email.
   ownerEmail: (process.env.OWNER_EMAIL ?? "").toLowerCase(),
