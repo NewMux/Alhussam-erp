@@ -1081,7 +1081,11 @@ async function createContext(opts) {
   let user = null;
   try {
     user = await sdk.authenticateRequest(opts.req);
-  } catch {
+  } catch (error) {
+    console.info("[auth-context] session unavailable", {
+      path: opts.req.path,
+      reason: error instanceof Error ? error.message : "Unknown auth failure"
+    });
     user = null;
   }
   return {
