@@ -11,9 +11,12 @@ import { TRPCError } from "@trpc/server";
 
 // server/_core/env.ts
 var DEFAULT_SUPABASE_URL = "https://cevoyflcdsdkhigyunlv.supabase.co";
+function cleanEnvironmentValue(value) {
+  return value?.trim().replace(/^['\"]|['\"]$/g, "") ?? "";
+}
 function validSupabaseUrl(...candidates) {
   for (const candidate of candidates) {
-    const value = candidate?.trim().replace(/^['\"]|['\"]$/g, "");
+    const value = cleanEnvironmentValue(candidate);
     if (!value) continue;
     try {
       const parsed = new URL(value);
@@ -31,7 +34,9 @@ var ENV = {
   // variables remain a backwards-compatible fallback for an existing deploy,
   // but should not be the server's source of truth.
   supabaseUrl: validSupabaseUrl(process.env.SUPABASE_URL, process.env.VITE_SUPABASE_URL),
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
+  supabaseAnonKey: cleanEnvironmentValue(
+    process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY
+  ),
   // Email address (case-insensitive) that is automatically granted the admin
   // role the first time it signs in. Set this to the shop owner's login email.
   ownerEmail: (process.env.OWNER_EMAIL ?? "").toLowerCase(),
