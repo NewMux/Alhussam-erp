@@ -681,6 +681,24 @@ var erpRouter = router({
       const customRole = assignment ? byId.get(assignment.customRoleId) : void 0;
       return { ...base, customRoleId: customRole?.id || null, customRoleName: customRole?.name || null, customRoleActive: Boolean(assignment?.isActive && customRole?.isActive) };
     });
+  }), removeUser: protectedProcedure.input(z2.object({ userId: z2.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    await access(ctx.user.id, ctx.user.role, adminRoles);
+    if (input.userId === ctx.user.id) throw new TRPCError3({ code: "FORBIDDEN", message: "The owner account cannot be removed." });
+    const db = await dbOrThrow();
+    const target = (await db.select({ id: users.id, role: users.role }).from(users).where(eq2(users.id, input.userId)).limit(1))[0];
+    if (!target) throw new TRPCError3({ code: "NOT_FOUND", message: "This user no longer exists." });
+    const targetBusinessRole = (await db.select().from(userBusinessRoles).where(eq2(userBusinessRoles.userId, input.userId)).limit(1))[0];
+    if (target.role === "admin" || targetBusinessRole?.role === "admin") throw new TRPCError3({ code: "FORBIDDEN", message: "Owner accounts cannot be removed." });
+    await db.transaction(async (tx) => {
+      await tx.delete(userCustomRoles).where(eq2(userCustomRoles.userId, input.userId));
+      await tx.delete(userBusinessRoles).where(eq2(userBusinessRoles.userId, input.userId));
+      await tx.delete(pendingAccessRequests).where(eq2(pendingAccessRequests.userId, input.userId));
+      await tx.delete(staffAccessInvites).where(eq2(staffAccessInvites.acceptedByUserId, input.userId));
+      await tx.update(staffProfiles).set({ userId: null, isActive: false, updatedAt: /* @__PURE__ */ new Date() }).where(eq2(staffProfiles.userId, input.userId));
+      await tx.delete(users).where(eq2(users.id, input.userId));
+    });
+    await audit(ctx.user.id, "USER_REMOVED", "user", input.userId, { access: "revoked", records: "preserved" });
+    return { success: true };
   }), listCustomRoles: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, adminRoles);
     const rows = await (await dbOrThrow()).select().from(customRoles).orderBy(customRoles.name);

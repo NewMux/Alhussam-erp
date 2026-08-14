@@ -37,4 +37,8 @@ describe("ERP input contracts", () => {
     const caller = appRouter.createCaller(context());
     await expect(caller.erp.accessApproval.approveWithPermissions({ requestId: 0, name: "A", description: "", permissions: [], note: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+  it("rejects an invalid user-removal request before any access records can change", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.team.removeUser({ userId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });
