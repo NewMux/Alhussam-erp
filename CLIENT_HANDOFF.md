@@ -47,7 +47,7 @@ To deploy: connect this repository in the Vercel dashboard (Vercel auto-detects 
 |---|---|
 | `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for serverless hosts. |
 | `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
-| `NODE_ENV` | Set to `production`. |
+| `NODE_ENV` | Set to `production` **only on hosts that don't set it for you** (e.g. a plain VPS running `pnpm start`). On Vercel, don't set it — Vercel sets it automatically during builds, and setting it yourself makes `pnpm install` skip devDependencies, which breaks the API function's build. |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** (must be set before the build runs) and also read server-side to verify tokens. |
 
 Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
