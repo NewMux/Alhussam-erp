@@ -579,7 +579,7 @@ var erpRouter = router({
     const end = input?.endDate ? /* @__PURE__ */ new Date(`${input.endDate}T23:59:59.999Z`) : null;
     const [invoiceRows, saleRows] = await Promise.all([db.select().from(invoices).orderBy(desc(invoices.issuedAt)).limit(500), db.select().from(sales).orderBy(desc(sales.createdAt)).limit(500)]);
     const saleById = new Map(saleRows.map((sale) => [sale.id, sale]));
-    return invoiceRows.map((invoice) => ({ ...invoice, sale: saleById.get(invoice.saleId) || null })).filter(({ invoice, sale }) => (!input?.status || invoice.status === input.status) && (!input?.source || sale?.source === input.source) && (!input?.paymentMethod || sale?.paymentMethod === input.paymentMethod) && (!start || invoice.issuedAt >= start) && (!end || invoice.issuedAt <= end) && (!search || [invoice.invoiceNumber, sale?.saleNumber || "", sale?.customerNameSnapshot || "", sale?.customerPhoneSnapshot || ""].some((value) => value.toLowerCase().includes(search))));
+    return invoiceRows.map((invoice) => ({ ...invoice, sale: saleById.get(invoice.saleId) || null })).filter((row) => (!input?.status || row.status === input.status) && (!input?.source || row.sale?.source === input.source) && (!input?.paymentMethod || row.sale?.paymentMethod === input.paymentMethod) && (!start || row.issuedAt >= start) && (!end || row.issuedAt <= end) && (!search || [row.invoiceNumber, row.sale?.saleNumber || "", row.sale?.customerNameSnapshot || "", row.sale?.customerPhoneSnapshot || ""].some((value) => value.toLowerCase().includes(search))));
   }), detail: protectedProcedure.input(z2.object({ invoiceId: z2.number().int().positive() })).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, salesRoles);
     const db = await dbOrThrow();
