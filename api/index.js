@@ -1066,14 +1066,13 @@ var HttpError = class extends Error {
 var ForbiddenError = (msg) => new HttpError(403, msg);
 
 // server/_core/sdk.ts
-var SUPABASE_AUTH_USER_URL = "https://cevoyflcdsdkhigyunlv.supabase.co/auth/v1/user";
 async function getSupabaseUser(accessToken) {
   if (!ENV.supabaseAnonKey) {
     throw ForbiddenError("Server authentication is not configured");
   }
   let response;
   try {
-    response = await fetch(SUPABASE_AUTH_USER_URL, {
+    response = await fetch(`${ENV.supabaseUrl}/auth/v1/user`, {
       headers: {
         apikey: ENV.supabaseAnonKey,
         Authorization: `Bearer ${accessToken}`

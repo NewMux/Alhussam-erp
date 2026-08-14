@@ -4,8 +4,6 @@ import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
 
-const SUPABASE_AUTH_USER_URL = "https://cevoyflcdsdkhigyunlv.supabase.co/auth/v1/user";
-
 type SupabaseAuthUser = {
   id: string;
   email?: string | null;
@@ -22,7 +20,7 @@ async function getSupabaseUser(accessToken: string): Promise<SupabaseAuthUser> {
 
   let response: Response;
   try {
-    response = await fetch(SUPABASE_AUTH_USER_URL, {
+    response = await fetch(`${ENV.supabaseUrl}/auth/v1/user`, {
       headers: {
         apikey: ENV.supabaseAnonKey,
         Authorization: `Bearer ${accessToken}`,
