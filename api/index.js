@@ -10,13 +10,28 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
 // server/_core/env.ts
+var DEFAULT_SUPABASE_URL = "https://cevoyflcdsdkhigyunlv.supabase.co";
+function validSupabaseUrl(...candidates) {
+  for (const candidate of candidates) {
+    const value = candidate?.trim().replace(/^['\"]|['\"]$/g, "");
+    if (!value) continue;
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol === "https:" && parsed.hostname.endsWith(".supabase.co")) {
+        return parsed.toString().replace(/\/$/, "");
+      }
+    } catch {
+    }
+  }
+  return DEFAULT_SUPABASE_URL;
+}
 var ENV = {
   databaseUrl: process.env.DATABASE_URL ?? "",
-  // Same project the client uses (VITE_-prefixed so Vite also inlines them
-  // into the browser bundle). Used server-side to verify access tokens via
-  // Supabase's own /auth/v1/user endpoint — no separate JWT secret needed.
-  supabaseUrl: process.env.VITE_SUPABASE_URL ?? "",
-  supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY ?? "",
+  // Prefer server-only Supabase settings for token verification. The VITE_
+  // variables remain a backwards-compatible fallback for an existing deploy,
+  // but should not be the server's source of truth.
+  supabaseUrl: validSupabaseUrl(process.env.SUPABASE_URL, process.env.VITE_SUPABASE_URL),
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? "",
   // Email address (case-insensitive) that is automatically granted the admin
   // role the first time it signs in. Set this to the shop owner's login email.
   ownerEmail: (process.env.OWNER_EMAIL ?? "").toLowerCase(),
@@ -1059,9 +1074,20 @@ var sdk = new SDKServer();
 // server/_core/context.ts
 async function createContext(opts) {
   let user = null;
+  const hasBearerToken = typeof opts.req.headers.authorization === "string" && opts.req.headers.authorization.startsWith("Bearer ");
   try {
     user = await sdk.authenticateRequest(opts.req);
+    console.info("[auth-context] session accepted", {
+      path: opts.req.path,
+      hasBearerToken,
+      userId: user.id
+    });
   } catch (error) {
+    console.info("[auth-context] session unavailable", {
+      path: opts.req.path,
+      hasBearerToken,
+      reason: error instanceof Error ? error.message : "Unknown auth failure"
+    });
     user = null;
   }
   return {
