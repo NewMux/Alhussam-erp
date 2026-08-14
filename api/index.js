@@ -309,6 +309,9 @@ var salesSource = z2.enum(["counter", "manual", "tailoring"]);
 var salesHistoryInput = z2.object({ search: z2.string().max(160).optional(), source: salesSource.optional(), paymentStatus: z2.enum(["paid", "partial", "unpaid"]).optional(), startDate: z2.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), endDate: z2.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).superRefine((value, ctx) => {
   if (value.startDate && value.endDate && value.startDate > value.endDate) ctx.addIssue({ code: "custom", message: "The end date must be on or after the start date." });
 });
+var invoiceListInput = z2.object({ search: z2.string().max(160).optional(), status: z2.enum(["paid", "partial", "unpaid"]).optional(), source: salesSource.optional(), paymentMethod: z2.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]).optional(), startDate: z2.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), endDate: z2.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).superRefine((value, ctx) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) ctx.addIssue({ code: "custom", message: "The end date must be on or after the start date." });
+});
 var manualSaleInput = z2.object({ customerId: z2.number().int().positive().optional(), customerName: z2.string().trim().min(2).max(160), customerPhone: z2.string().trim().max(50), description: z2.string().trim().min(2).max(160), quantity: z2.number().positive().max(999), unitPrice: z2.number().positive().max(1e6), discount: z2.number().min(0).max(1e6), paymentMethod: z2.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]), paymentStatus: z2.enum(["paid", "partial", "unpaid"]), notes: z2.string().max(2e3) }).superRefine((value, ctx) => {
   if (value.discount > value.quantity * value.unitPrice) ctx.addIssue({ code: "custom", path: ["discount"], message: "Discount cannot exceed the sale subtotal." });
 });
@@ -568,9 +571,15 @@ var erpRouter = router({
     const total = rows.reduce((sum, sale) => sum + Number(sale.total), 0);
     return { month: input.month, shop, totals: { saleCount: rows.length, revenue: total, averageOrder: rows.length ? total / rows.length : 0, paidCount: rows.filter((sale) => sale.paymentStatus === "paid").length, partialCount: rows.filter((sale) => sale.paymentStatus === "partial").length, unpaidCount: rows.filter((sale) => sale.paymentStatus === "unpaid").length }, bySource: Array.from(bySource, ([source, values]) => ({ source, ...values })), byPayment: Array.from(byPayment, ([paymentMethod, values]) => ({ paymentMethod, ...values })), topLines: Array.from(topLines, ([name, values]) => ({ name, ...values })).sort((left, right) => right.total - left.total).slice(0, 8), sales: rows.map((sale) => ({ ...sale, invoice: invoiceBySale.get(sale.id) || null })) };
   }) }),
-  invoices: router({ list: protectedProcedure.query(async ({ ctx }) => {
+  invoices: router({ list: protectedProcedure.input(invoiceListInput.optional()).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, salesRoles);
-    return (await dbOrThrow()).select().from(invoices).orderBy(desc(invoices.issuedAt)).limit(100);
+    const db = await dbOrThrow();
+    const search = input?.search?.trim().toLowerCase();
+    const start = input?.startDate ? /* @__PURE__ */ new Date(`${input.startDate}T00:00:00.000Z`) : null;
+    const end = input?.endDate ? /* @__PURE__ */ new Date(`${input.endDate}T23:59:59.999Z`) : null;
+    const [invoiceRows, saleRows] = await Promise.all([db.select().from(invoices).orderBy(desc(invoices.issuedAt)).limit(500), db.select().from(sales).orderBy(desc(sales.createdAt)).limit(500)]);
+    const saleById = new Map(saleRows.map((sale) => [sale.id, sale]));
+    return invoiceRows.map((invoice) => ({ ...invoice, sale: saleById.get(invoice.saleId) || null })).filter(({ invoice, sale }) => (!input?.status || invoice.status === input.status) && (!input?.source || sale?.source === input.source) && (!input?.paymentMethod || sale?.paymentMethod === input.paymentMethod) && (!start || invoice.issuedAt >= start) && (!end || invoice.issuedAt <= end) && (!search || [invoice.invoiceNumber, sale?.saleNumber || "", sale?.customerNameSnapshot || "", sale?.customerPhoneSnapshot || ""].some((value) => value.toLowerCase().includes(search))));
   }), detail: protectedProcedure.input(z2.object({ invoiceId: z2.number().int().positive() })).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, salesRoles);
     const db = await dbOrThrow();
