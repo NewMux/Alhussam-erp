@@ -41,4 +41,12 @@ describe("ERP input contracts", () => {
     const caller = appRouter.createCaller(context());
     await expect(caller.erp.team.removeUser({ userId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+  it("requires a positive final amount for a payroll payout before any payroll data can change", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.staff.createPayout({ staffProfileId: 1, payPeriod: "2026-08", amount: 0, deductions: 0, notes: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+  it("rejects a malformed payroll pay period before any payroll data can change", async () => {
+    const caller = appRouter.createCaller(context());
+    await expect(caller.erp.staff.createPayout({ staffProfileId: 1, payPeriod: "2026-13", amount: 100, deductions: 0, notes: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

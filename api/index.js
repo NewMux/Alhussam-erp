@@ -619,17 +619,16 @@ var erpRouter = router({
   }), payouts: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, payrollRoles);
     return (await dbOrThrow()).select().from(salaryPayouts).orderBy(desc(salaryPayouts.paidAt)).limit(100);
-  }), createPayout: protectedProcedure.input(z2.object({ staffProfileId: z2.number().int(), payPeriod: z2.string().min(7), deductions: z2.number().min(0), notes: z2.string() })).mutation(async ({ ctx, input }) => {
+  }), createPayout: protectedProcedure.input(z2.object({ staffProfileId: z2.number().int().positive(), payPeriod: z2.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a valid pay period."), amount: z2.number().positive("Enter a payout amount greater than zero.").max(1e6), deductions: z2.number().min(0).max(1e6), notes: z2.string().max(2e3) })).mutation(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, payrollRoles);
     const db = await dbOrThrow();
     const staff = (await db.select().from(staffProfiles).where(eq2(staffProfiles.id, input.staffProfileId)).limit(1))[0];
     if (!staff) throw new TRPCError3({ code: "NOT_FOUND", message: "Staff profile not found." });
-    const bonus = 0;
-    const netSalary = Math.max(0, Number(staff.baseSalary) + bonus - input.deductions);
-    const result = await db.insert(salaryPayouts).values({ staffProfileId: staff.id, payPeriod: input.payPeriod, baseSalary: staff.baseSalary, performanceBonus: three(bonus), deductions: three(input.deductions), netSalary: three(netSalary), notes: input.notes || null, approvedBy: ctx.user.id }).returning({ id: salaryPayouts.id });
+    const finalAmount = input.amount;
+    const result = await db.insert(salaryPayouts).values({ staffProfileId: staff.id, payPeriod: input.payPeriod, baseSalary: staff.baseSalary, performanceBonus: three(0), deductions: three(input.deductions), netSalary: three(finalAmount), notes: input.notes.trim() || null, approvedBy: ctx.user.id }).returning({ id: salaryPayouts.id });
     const payoutId = id(result);
-    await audit(ctx.user.id, "SALARY_PAYOUT_CREATED", "salaryPayout", payoutId);
-    return { id: payoutId, netSalary };
+    await audit(ctx.user.id, "SALARY_PAYOUT_CREATED", "salaryPayout", payoutId, { staffProfileId: staff.id, payPeriod: input.payPeriod, finalAmount: three(finalAmount), deductions: three(input.deductions) });
+    return { id: payoutId, netSalary: finalAmount };
   }) }),
   tailoring: router({ list: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, tailoringRoles);
