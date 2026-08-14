@@ -15,12 +15,8 @@ export async function createContext(
 
   try {
     user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Temporary token-safe diagnostic for the production session verification path.
-    console.info("[auth-context] session unavailable", {
-      path: opts.req.path,
-      reason: error instanceof Error ? error.message : "Unknown auth failure",
-    });
+  } catch {
+    // Authentication is optional for public procedures.
     user = null;
   }
 
