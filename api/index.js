@@ -1074,20 +1074,9 @@ var sdk = new SDKServer();
 // server/_core/context.ts
 async function createContext(opts) {
   let user = null;
-  const hasBearerToken = typeof opts.req.headers.authorization === "string" && opts.req.headers.authorization.startsWith("Bearer ");
   try {
     user = await sdk.authenticateRequest(opts.req);
-    console.info("[auth-context] session accepted", {
-      path: opts.req.path,
-      hasBearerToken,
-      userId: user.id
-    });
-  } catch (error) {
-    console.info("[auth-context] session unavailable", {
-      path: opts.req.path,
-      hasBearerToken,
-      reason: error instanceof Error ? error.message : "Unknown auth failure"
-    });
+  } catch {
     user = null;
   }
   return {
