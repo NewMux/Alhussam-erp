@@ -6,8 +6,8 @@ import { ENV } from "./_core/env";
 
 let database: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
-  if (!database && process.env.DATABASE_URL) {
-    const client = postgres(process.env.DATABASE_URL, { prepare: false });
+  if (!database && ENV.databaseUrl) {
+    const client = postgres(ENV.databaseUrl, { prepare: false });
     database = drizzle(client);
   }
   return database;

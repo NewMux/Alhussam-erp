@@ -21,7 +21,7 @@ function validSupabaseUrl(...candidates: Array<string | undefined>): string {
 }
 
 export const ENV = {
-  databaseUrl: process.env.DATABASE_URL ?? "",
+  databaseUrl: cleanEnvironmentValue(process.env.DATABASE_URL),
   // Prefer server-only Supabase settings for token verification. The VITE_
   // variables remain a backwards-compatible fallback for an existing deploy,
   // but should not be the server's source of truth.

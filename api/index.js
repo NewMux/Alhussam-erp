@@ -29,7 +29,7 @@ function validSupabaseUrl(...candidates) {
   return DEFAULT_SUPABASE_URL;
 }
 var ENV = {
-  databaseUrl: process.env.DATABASE_URL ?? "",
+  databaseUrl: cleanEnvironmentValue(process.env.DATABASE_URL),
   // Prefer server-only Supabase settings for token verification. The VITE_
   // variables remain a backwards-compatible fallback for an existing deploy,
   // but should not be the server's source of truth.
@@ -246,8 +246,8 @@ import postgres from "postgres";
 import { eq } from "drizzle-orm";
 var database = null;
 async function getDb() {
-  if (!database && process.env.DATABASE_URL) {
-    const client = postgres(process.env.DATABASE_URL, { prepare: false });
+  if (!database && ENV.databaseUrl) {
+    const client = postgres(ENV.databaseUrl, { prepare: false });
     database = drizzle(client);
   }
   return database;
