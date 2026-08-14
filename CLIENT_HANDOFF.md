@@ -31,7 +31,7 @@ The point of sale is intentionally aligned to the active inventory records. It p
 
 ## Hosting requirements
 
-The app is a Node.js 22 service (React/Vite frontend, Express/tRPC backend, Drizzle ORM) plus a **Supabase** project (Postgres database + authentication). In production the Express server itself serves the built frontend (`dist/public`), so frontend and API are one deployable unit on one origin — no separate static host is needed. The verified production commands are:
+The app is a React/Vite frontend with an Express/tRPC backend (Drizzle ORM) plus a **Supabase** project (Postgres database + authentication). It's deployed on **Vercel**: the frontend builds to static assets, and the backend runs as a single Vercel serverless function (`api/index.ts`, which wraps the same Express app used for local development — see `vercel.json` for the routing). Local/alternate-host development still uses:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -39,25 +39,26 @@ pnpm build
 pnpm start
 ```
 
-Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server verifies the resulting access token by calling Supabase's own `/auth/v1/user` endpoint (no separate JWT secret to manage). A `railway.toml` is included for deploying the Node service to Railway (build, start, and a pre-deploy step that applies pending database migrations to Supabase's Postgres), but any Node 22 host that can run a persistent process works.
+Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server verifies the resulting access token by calling Supabase's own `/auth/v1/user` endpoint (no separate JWT secret to manage).
 
-The host must expose the application through HTTPS and inject secrets securely. It must not commit `.env` files, credentials, or database dumps to source control.
+To deploy: connect this repository in the Vercel dashboard (Vercel auto-detects `vercel.json`), set the env vars below on the project, and deploy. No CLI or account token needed beyond the GitHub connection. It must not commit `.env` files, credentials, or database dumps to source control.
 
 | Required env var | Purpose |
 |---|---|
-| `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for external hosts. |
+| `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for serverless hosts. |
 | `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
 | `NODE_ENV` | Set to `production`. |
-| `PORT` | Usually injected automatically by the host (e.g. Railway); the app also self-selects a free port if unset. |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** (must be set before `pnpm build` runs) and also read server-side to verify tokens. |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** (must be set before the build runs) and also read server-side to verify tokens. |
 
 Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
+
+Note: Vercel serverless functions have a request body size ceiling (a few MB depending on plan) — fine for this app's JSON/API traffic, but worth knowing if a future feature needs large file uploads through `/api`.
 
 ### First-time setup on a fresh Supabase project
 
 1. Create the Supabase project. Grab the Postgres connection string (`DATABASE_URL`) and the project URL and anon key (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) from Project Settings.
 2. In Supabase Auth settings, confirm the Email provider is enabled. Decide whether to require email confirmation before sign-in (Authentication → Providers → Email) — the app's sign-up form handles both cases.
-3. Run `pnpm exec drizzle-kit migrate` once (or let the host's pre-deploy step do it) to create all tables in the Supabase database.
+3. Run `pnpm exec drizzle-kit migrate` (with `DATABASE_URL` set) to create all tables in the Supabase database. Vercel has no build-time migration hook, so run this manually whenever `drizzle/schema.ts` changes, before or after deploying.
 4. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
 
 ## Go-live acceptance test
