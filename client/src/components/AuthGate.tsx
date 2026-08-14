@@ -1,5 +1,4 @@
-import { trpc } from "@/lib/trpc";
-import { TRPCClientError } from "@trpc/client";
+import { supabase } from "@/lib/supabase";
 import { Loader2, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -7,36 +6,41 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function AuthGate() {
-  const utils = trpc.useUtils();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const onSuccess = () => {
-    setError(null);
-    utils.auth.me.invalidate();
-  };
-
-  const onError = (err: unknown) => {
-    setError(
-      err instanceof TRPCClientError ? err.message : "Something went wrong. Please try again."
-    );
-  };
-
-  const loginMutation = trpc.auth.login.useMutation({ onSuccess, onError });
-  const registerMutation = trpc.auth.register.useMutation({ onSuccess, onError });
-
-  const pending = loginMutation.isPending || registerMutation.isPending;
-
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (mode === "login") {
-      loginMutation.mutate({ email, password });
-    } else {
-      registerMutation.mutate({ name, email, password });
+    setNotice(null);
+    setPending(true);
+
+    try {
+      if (mode === "login") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
+      } else {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { name } },
+        });
+        if (signUpError) throw signUpError;
+        if (!data.session) {
+          // Email confirmation is required before the account can sign in.
+          setNotice("Check your email to confirm your account, then sign in below.");
+          setMode("login");
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setPending(false);
     }
   };
 
@@ -94,6 +98,7 @@ export default function AuthGate() {
             />
           </div>
 
+          {notice && <p className="text-sm text-emerald-600">{notice}</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={pending}>
@@ -108,6 +113,7 @@ export default function AuthGate() {
           onClick={() => {
             setMode(mode === "login" ? "register" : "login");
             setError(null);
+            setNotice(null);
           }}
         >
           {mode === "login" ? "Need an account? Register" : "Already have an account? Sign in"}

@@ -12,7 +12,7 @@ The point of sale is intentionally aligned to the active inventory records. It p
 
 | Area | Outcome | Client note |
 |---|---|---|
-| Build and automated tests | `pnpm check`, `pnpm test`, and `pnpm build` pass. The current suite contains 14 tests. | Re-run all three commands before every release. |
+| Build and automated tests | `pnpm check`, `pnpm test`, and `pnpm build` pass. The current suite contains 26 tests. | Re-run all three commands before every release. |
 | Backend access | ERP and POS procedures require an authenticated user. Business-role checks gate sales, inventory, payroll, and administration actions. | Assign least-privilege roles after each team member signs in. |
 | Data integrity | Active inventory count is 3. The relational audit found zero invoices without sales, sale lines without sales, stock movements without materials, and duplicate business-role records. | Take a database backup before importing production records. |
 | POS and stock | The POS sells direct inventory items, blocks quantities beyond available balance, records stock movement, creates sale/invoice records, and supports immediate print. | Confirm each material’s unit, opening balance, threshold, and initial checkout price before launch. |
@@ -31,7 +31,7 @@ The point of sale is intentionally aligned to the active inventory records. It p
 
 ## Hosting requirements
 
-The app is a single Node.js 22 service: React/Vite frontend, Express/tRPC backend, Drizzle ORM, MySQL/TiDB-compatible storage. In production the Express server itself serves the built frontend (`dist/public`), so frontend and API are one deployable unit on one origin — no separate static host is needed. The verified production commands are:
+The app is a Node.js 22 service (React/Vite frontend, Express/tRPC backend, Drizzle ORM) plus a **Supabase** project (Postgres database + authentication). In production the Express server itself serves the built frontend (`dist/public`), so frontend and API are one deployable unit on one origin — no separate static host is needed. The verified production commands are:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -39,25 +39,27 @@ pnpm build
 pnpm start
 ```
 
-Authentication is self-contained email/password (no external identity provider or third-party OAuth service required). A `railway.toml` is included for deploying to Railway (build, start, and a pre-deploy step that applies pending database migrations), but any Node 22 host that can run a persistent process works.
+Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server only verifies the resulting access token. A `railway.toml` is included for deploying the Node service to Railway (build, start, and a pre-deploy step that applies pending database migrations to Supabase's Postgres), but any Node 22 host that can run a persistent process works.
 
-The host must expose the application through HTTPS, provide a managed MySQL-compatible database, and inject secrets securely. It must not commit `.env` files, credentials, or database dumps to source control.
+The host must expose the application through HTTPS and inject secrets securely. It must not commit `.env` files, credentials, or database dumps to source control.
 
 | Required env var | Purpose |
 |---|---|
-| `DATABASE_URL` | MySQL/TiDB connection used by Drizzle and all ERP data operations. Require TLS where the database provider supports it. |
-| `JWT_SECRET` | Signs and verifies session cookies. Generate a long random value (e.g. `openssl rand -hex 32`) and never reuse it across environments. |
+| `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for external hosts. |
+| `SUPABASE_JWT_SECRET` | Project Settings → API → JWT Settings → JWT Secret. Verifies Supabase-issued access tokens server-side. |
 | `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
 | `NODE_ENV` | Set to `production`. |
 | `PORT` | Usually injected automatically by the host (e.g. Railway); the app also self-selects a free port if unset. |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** — must be set before `pnpm build` runs, not just at runtime. |
 
 Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
 
-### First-time setup on a fresh database
+### First-time setup on a fresh Supabase project
 
-1. Provision the MySQL/TiDB database and set `DATABASE_URL`.
-2. Run `pnpm exec drizzle-kit migrate` once (or let the host's pre-deploy step do it) to create all tables.
-3. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
+1. Create the Supabase project. Grab the Postgres connection string (`DATABASE_URL`), the JWT secret (`SUPABASE_JWT_SECRET`), the project URL and anon key (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) from Project Settings.
+2. In Supabase Auth settings, confirm the Email provider is enabled. Decide whether to require email confirmation before sign-in (Authentication → Providers → Email) — the app's sign-up form handles both cases.
+3. Run `pnpm exec drizzle-kit migrate` once (or let the host's pre-deploy step do it) to create all tables in the Supabase database.
+4. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
 
 ## Go-live acceptance test
 

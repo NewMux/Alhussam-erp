@@ -20,7 +20,7 @@ describe("pos.checkout", () => {
     const stockUpdates: unknown[] = [];
     const transactionSelectRows = [[{ id: 4, name: "Navy cotton", inventoryItemId: 81, defaultFabricMeters: "2.000", unitPrice: "45.000", isActive: true }], [{ id: 81, name: "Navy cotton", quantity: "4.000", unit: "Meters", isActive: true }]];
     const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { insertId: writes.length === 1 ? 701 : 1 }; }) })),
+      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 701 : 1 }] }; }) })),
       select: vi.fn(() => query(transactionSelectRows.shift() || [])),
       update: vi.fn(() => ({ set: vi.fn((value: unknown) => { stockUpdates.push(value); return { where: vi.fn() }; }) })),
     };
@@ -54,7 +54,7 @@ describe("pos.checkout", () => {
     const writes: unknown[] = [];
     const stockUpdates: unknown[] = [];
     const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { insertId: writes.length === 1 ? 702 : 2 }; }) })),
+      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 702 : 2 }] }; }) })),
       select: vi.fn(() => query([{ id: 30001, name: "Navy Premium Cotton", quantity: "16.000", unit: "Meters", costPerUnit: "7.500", isActive: true }])),
       update: vi.fn(() => ({ set: vi.fn((value: unknown) => { stockUpdates.push(value); return { where: vi.fn() }; }) })),
     };
@@ -79,7 +79,7 @@ describe("pos.checkout", () => {
       [{ id: 7, name: "[DEMO] Khalid Tailor", isActive: true }],
     ];
     const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); const insertIds = [811, 712, 1, 43]; return { insertId: insertIds[writes.length - 1] }; }) })),
+      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); const insertIds = [811, 712, 1, 43]; return { returning: () => [{ id: insertIds[writes.length - 1] }] }; }) })),
       select: vi.fn(() => query(transactionResponses.shift() || [])),
     };
     const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [{ invoicePrefix: "POS" }]];

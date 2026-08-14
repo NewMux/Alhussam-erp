@@ -85,9 +85,8 @@ export const posRouter = router({
         resolved.push({ serviceId: catalogItem.id, inventoryItemId: catalogItem.inventoryItemId, name: catalogItem.name, quantity: item.quantity, unitPrice: Number(catalogItem.unitPrice), stockPerSaleUnit: catalogItem.inventoryItemId ? Number(catalogItem.defaultFabricMeters || 1) : 0, stock: stock || null });
       }
       const { subtotal, total } = calculateCheckoutTotal(resolved, input.discount);
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: input.customerId, customerNameSnapshot: input.customerName, customerPhoneSnapshot: input.customerPhone || null, subtotal: money(subtotal), discount: money(input.discount), total: money(total), paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus, createdBy: ctx.user.id });
-      const saleHeader = Array.isArray(saleResult) ? saleResult[0] : saleResult;
-      const saleId = Number((saleHeader as { insertId?: number }).insertId || 0);
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: input.customerId, customerNameSnapshot: input.customerName, customerPhoneSnapshot: input.customerPhone || null, subtotal: money(subtotal), discount: money(input.discount), total: money(total), paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
         await tx.insert(saleItems).values({ saleId, serviceId: item.serviceId, inventoryItemId: item.inventoryItemId, nameSnapshot: item.name, quantity: money(item.quantity), unitPrice: money(item.unitPrice), lineTotal: money(item.quantity * item.unitPrice), assignedTailorId: null, measurementProfileId: null });
@@ -100,9 +99,8 @@ export const posRouter = router({
           await tx.insert(stockMovements).values({ inventoryItemId: item.stock.id, movementType: "sale", quantityChange: money(-quantityDeducted), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} · ${money(item.stockPerSaleUnit)} ${item.stock.unit} per sale unit` });
         }
       }
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: input.paymentStatus, notes: "Issued from touch POS." });
-      const invoiceHeader = Array.isArray(invoiceResult) ? invoiceResult[0] : invoiceResult;
-      const invoiceId = Number((invoiceHeader as { insertId?: number }).insertId || 0);
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: input.paymentStatus, notes: "Issued from touch POS." }).returning({ id: invoices.id });
+      const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The invoice could not be created." });
       return { saleId, invoiceId, total, lineCount: resolved.length };
     });
@@ -137,9 +135,8 @@ export const posRouter = router({
         notes: input.notes || null,
         productionNotes: input.productionNotes || null,
         createdBy: ctx.user.id,
-      });
-      const orderHeader = Array.isArray(orderResult) ? orderResult[0] : orderResult;
-      const orderId = Number((orderHeader as { insertId?: number }).insertId || 0);
+      }).returning({ id: tailoringOrders.id });
+      const orderId = Number(orderResult[0]?.id || 0);
       if (!orderId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring order could not be created." });
 
       const saleResult = await tx.insert(sales).values({
@@ -154,9 +151,8 @@ export const posRouter = router({
         paymentStatus,
         source: "tailoring",
         createdBy: ctx.user.id,
-      });
-      const saleHeader = Array.isArray(saleResult) ? saleResult[0] : saleResult;
-      const saleId = Number((saleHeader as { insertId?: number }).insertId || 0);
+      }).returning({ id: sales.id });
+      const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring payment could not be recorded." });
 
       const paymentLabel = paymentStatus === "paid" ? "full payment" : "deposit";
@@ -176,9 +172,8 @@ export const posRouter = router({
         invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`,
         status: paymentStatus,
         notes: `${orderNumber} · ${input.garmentType} · quoted ${money(input.orderPrice)} BHD · ${paymentLabel} collected from POS.`,
-      });
-      const invoiceHeader = Array.isArray(invoiceResult) ? invoiceResult[0] : invoiceResult;
-      const invoiceId = Number((invoiceHeader as { insertId?: number }).insertId || 0);
+      }).returning({ id: invoices.id });
+      const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring invoice could not be created." });
       return { orderId, saleId, invoiceId };
     });

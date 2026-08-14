@@ -25,7 +25,7 @@ function makeDb(options: { measurementCustomerId?: number; tailorActive?: boolea
   };
   const db = {
     select: () => ({ from: (table: unknown) => ({ where: () => ({ limit: async () => rows(table) }), orderBy: async () => rows(table) }) }),
-    insert: (table: unknown) => ({ values: async () => [{ insertId: table === tailoringOrders ? 501 : 1 }] }),
+    insert: (table: unknown) => ({ values: () => ({ returning: async () => [{ id: table === tailoringOrders ? 501 : 1 }] }) }),
     update: () => ({ set: (value: unknown) => ({ where: async () => { updates.push(value); return []; } }) }),
   };
   return { db, updates };
