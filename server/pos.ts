@@ -73,6 +73,16 @@ const checkoutInput = z.object({
   for (const item of value.items) if (item.lineDiscount > item.quantity * item.unitPrice) ctx.addIssue({ code: "custom", path: ["items"], message: `The discount for ${item.name} cannot exceed its line subtotal.` });
 });
 
+const quickCheckoutInput = z.object({
+  sessionId: z.number().int().positive(),
+  customerId: z.number().int().positive().optional(),
+  customerName: z.string().min(1).max(160).default("Walk-in customer"),
+  customerPhone: z.string().max(50).optional(),
+  amount: z.number().positive().max(1000000),
+  paymentMethod: paymentMethod.default("cash"),
+  note: z.string().trim().max(2000).optional(),
+});
+
 const tailoringCheckoutInput = z.object({
   sessionId: z.number().int().positive(),
   customerId: z.number().int().positive(),
@@ -278,6 +288,53 @@ export const posRouter = router({
       return { saleId, invoiceId, total, paidAmount, paymentStatus: calculatedStatus, lineCount: resolved.length, loyaltyPointsEarned: customer ? Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1000) / 1000 : 0 };
     });
     await audit(ctx.user.id, "POS_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, lineCount: checkout.lineCount, loyaltyPointsEarned: checkout.loyaltyPointsEarned });
+    return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
+  }),
+  quickCheckout: protectedProcedure.input(quickCheckoutInput).mutation(async ({ ctx, input }) => {
+    await requireCounterAccess(ctx.user.id, ctx.user.role);
+    const db = await dbOrThrow();
+    const shop = (await db.select().from(shopSettings).limit(1))[0];
+    const saleNumber = `POS-${Date.now()}`;
+    const checkout = await db.transaction(async tx => {
+      await validateSession(tx, input.sessionId);
+      const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
+      if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
+      const saleResult = await tx.insert(sales).values({
+        saleNumber,
+        customerId: customer?.id || null,
+        customerNameSnapshot: customer?.name || input.customerName,
+        customerPhoneSnapshot: customer?.phone || input.customerPhone || null,
+        subtotal: money(input.amount),
+        discount: money(0),
+        total: money(input.amount),
+        paidAmount: money(input.amount),
+        paymentMethod: input.paymentMethod,
+        paymentStatus: "paid",
+        source: "counter",
+        sessionId: input.sessionId,
+        createdBy: ctx.user.id,
+      }).returning({ id: sales.id });
+      const saleId = Number(saleResult[0]?.id || 0);
+      if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The walk-in sale could not be created." });
+      await tx.insert(saleItems).values({
+        saleId,
+        serviceId: null,
+        inventoryItemId: null,
+        nameSnapshot: "Walk-in sale",
+        quantity: money(1),
+        unitPrice: money(input.amount),
+        lineDiscount: money(0),
+        lineTotal: money(input.amount),
+        assignedTailorId: null,
+        measurementProfileId: null,
+      });
+      await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(input.amount), reference: null, createdBy: ctx.user.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || "Walk-in amount sale from POS register." }).returning({ id: invoices.id });
+      const invoiceId = Number(invoiceResult[0]?.id || 0);
+      if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The walk-in invoice could not be created." });
+      return { saleId, invoiceId, total: input.amount, paidAmount: input.amount, paymentStatus: "paid" as const };
+    });
+    await audit(ctx.user.id, "POS_WALKIN_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paymentMethod: input.paymentMethod });
     return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
   }),
   returns: router({
