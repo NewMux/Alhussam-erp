@@ -64,7 +64,7 @@ async function existingCheckoutByReference(clientReference: string | undefined) 
 const sessionInput = z.object({ openingCash: z.number().min(0).max(1000000), notes: z.string().trim().max(2000).optional() });
 const checkoutInput = z.object({
   clientReference: z.string().trim().max(120).optional(),
-  sessionId: z.number().int().positive(),
+  sessionId: z.number().int().positive().optional(),
   heldOrderId: z.number().int().positive().optional(),
   customerId: z.number().int().positive().optional(),
   customerName: z.string().min(1).max(160),
@@ -82,7 +82,7 @@ const checkoutInput = z.object({
 
 const quickCheckoutInput = z.object({
   clientReference: z.string().trim().max(120).optional(),
-  sessionId: z.number().int().positive(),
+  sessionId: z.number().int().positive().optional(),
   customerId: z.number().int().positive().optional(),
   customerName: z.string().min(1).max(160).default("Walk-in customer"),
   customerPhone: z.string().max(50).optional(),
@@ -126,6 +126,17 @@ const returnInput = z.object({
 async function validateSession(tx: any, sessionId: number) {
   const session = (await tx.select().from(posSessions).where(eq(posSessions.id, sessionId)).limit(1))[0];
   if (!session || session.status !== "open") throw new TRPCError({ code: "BAD_REQUEST", message: "Open a POS session before completing this order." });
+  return session;
+}
+
+async function resolveSession(tx: any, sessionId: number | undefined, userId: number) {
+  if (sessionId) return validateSession(tx, sessionId);
+  const existing = (await tx.select().from(posSessions).where(eq(posSessions.status, "open")).orderBy(desc(posSessions.openedAt)).limit(1))[0];
+  if (existing) return existing;
+  const sessionNumber = `POS-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}`;
+  const result = await tx.insert(posSessions).values({ sessionNumber, openedBy: userId, openingCash: money(0), notes: "Opened automatically while synchronizing offline sales" }).returning();
+  const session = result[0];
+  if (!session) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The POS session could not be opened for offline sales." });
   return session;
 }
 
@@ -207,7 +218,7 @@ export const posRouter = router({
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
     const checkout = await db.transaction(async tx => {
-      await validateSession(tx, input.sessionId);
+      const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
       const resolved = [] as Array<{ serviceId: number | null; inventoryItemId: number | null; name: string; quantity: number; unitPrice: number; lineDiscount: number; stockPerSaleUnit: number; stock: { id: number; name: string; quantity: string; unit: string } | null }>;
       for (const item of input.items) {
         if (item.inventoryItemId && !item.serviceId) {
@@ -269,7 +280,7 @@ export const posRouter = router({
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
     const checkout = await db.transaction(async tx => {
-      await validateSession(tx, input.sessionId);
+      const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
       const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
       if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
       const saleResult = await tx.insert(sales).values({
@@ -285,7 +296,7 @@ export const posRouter = router({
         paymentMethod: input.paymentMethod,
         paymentStatus: "paid",
         source: "counter",
-        sessionId: input.sessionId,
+        sessionId: resolvedSession.id,
         createdBy: ctx.user.id,
       }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
@@ -325,7 +336,7 @@ export const posRouter = router({
       const db = await dbOrThrow();
       const shop = (await db.select().from(shopSettings).limit(1))[0];
       const result = await db.transaction(async tx => {
-        await validateSession(tx, input.sessionId);
+        const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
         const original = (await tx.select().from(sales).where(eq(sales.id, input.originalSaleId)).limit(1))[0];
         if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "The original sale was not found." });
         const originalItems = await tx.select().from(saleItems).where(eq(saleItems.saleId, original.id));
@@ -371,7 +382,7 @@ export const posRouter = router({
     const saleNumber = `POS-TO-${Date.now()}`;
     const paymentStatus = input.paymentAmount >= input.orderPrice ? "paid" : "partial" as const;
     const transaction = await db.transaction(async tx => {
-      await validateSession(tx, input.sessionId);
+      const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
       const customer = (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0];
       if (!customer) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a valid customer before creating a tailoring order." });
       const measurement = (await tx.select().from(measurementProfiles).where(eq(measurementProfiles.id, input.measurementProfileId)).limit(1))[0];

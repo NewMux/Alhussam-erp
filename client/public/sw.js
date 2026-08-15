@@ -1,5 +1,12 @@
-const SHELL_CACHE = "tailor-erp-mobile-shell-v1";
-const APP_SHELL = ["/", "/manifest.json", "/favicon.svg"];
+const SHELL_CACHE = "tailor-erp-mobile-shell-v2";
+const APP_SHELL = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/favicon.svg",
+  "/brand/al-hussam-logo-192.jpg",
+  "/brand/al-hussam-logo-512.jpg",
+];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(APP_SHELL)));
@@ -7,7 +14,11 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(key => key !== SHELL_CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener("fetch", event => {
@@ -24,7 +35,7 @@ self.addEventListener("fetch", event => {
           caches.open(SHELL_CACHE).then(cache => cache.put(request, copy));
           return response;
         })
-        .catch(() => caches.match(request).then(cached => cached || caches.match("/")))
+        .catch(() => caches.match(request).then(cached => cached || caches.match("/index.html") || caches.match("/"))),
     );
     return;
   }
@@ -38,6 +49,6 @@ self.addEventListener("fetch", event => {
         })
         .catch(() => cached);
       return cached || fresh;
-    })
+    }),
   );
 });
