@@ -217,6 +217,10 @@ var serviceCategoryEnum = pgEnum("service_category", ["tailoring", "fabric", "al
 var paymentMethodEnum = pgEnum("payment_method", ["cash", "benefitpay", "bank_transfer", "credit_card"]);
 var paymentStatusEnum = pgEnum("payment_status", ["paid", "partial", "unpaid"]);
 var saleSourceEnum = pgEnum("sale_source", ["counter", "manual", "tailoring"]);
+var posSessionStatusEnum = pgEnum("pos_session_status", ["open", "closed"]);
+var posOrderStatusEnum = pgEnum("pos_order_status", ["held", "open", "paid", "cancelled", "refunded"]);
+var loyaltyTransactionTypeEnum = pgEnum("loyalty_transaction_type", ["earn", "redeem", "adjust", "refund"]);
+var discountTypeEnum = pgEnum("discount_type", ["percent", "amount"]);
 var invoiceStatusEnum = pgEnum("invoice_status", ["paid", "partial", "unpaid", "void"]);
 var attendanceStatusEnum = pgEnum("attendance_status", ["present", "absent", "leave", "half_day"]);
 var userBusinessRoles = pgTable("userBusinessRoles", { id: serial("id").primaryKey(), userId: integer("userId").notNull().unique(), role: businessRoleEnum("role").notNull().default("sales"), isActive: boolean("isActive").notNull().default(true), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
@@ -224,15 +228,21 @@ var customRoles = pgTable("customRoles", { id: serial("id").primaryKey(), name: 
 var userCustomRoles = pgTable("userCustomRoles", { id: serial("id").primaryKey(), userId: integer("userId").notNull().unique(), customRoleId: integer("customRoleId").notNull(), isActive: boolean("isActive").notNull().default(true), updatedBy: integer("updatedBy").notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var pendingAccessRequests = pgTable("pendingAccessRequests", { id: serial("id").primaryKey(), userId: integer("userId").notNull().unique(), status: accessRequestStatusEnum("status").notNull().default("pending"), requestedAt: timestamp("requestedAt").defaultNow().notNull(), reviewedAt: timestamp("reviewedAt"), reviewedBy: integer("reviewedBy"), note: varchar("note", { length: 500 }) });
 var staffAccessInvites = pgTable("staffAccessInvites", { id: serial("id").primaryKey(), name: varchar("name", { length: 160 }).notNull(), email: varchar("email", { length: 320 }).notNull().unique(), customRoleId: integer("customRoleId").notNull(), isActive: boolean("isActive").notNull().default(true), invitedBy: integer("invitedBy").notNull(), invitedAt: timestamp("invitedAt").defaultNow().notNull(), acceptedByUserId: integer("acceptedByUserId"), acceptedAt: timestamp("acceptedAt") });
-var shopSettings = pgTable("shopSettings", { id: serial("id").primaryKey(), shopName: varchar("shopName", { length: 160 }).notNull(), arabicShopName: varchar("arabicShopName", { length: 160 }), crNumber: varchar("crNumber", { length: 80 }), currency: varchar("currency", { length: 8 }).notNull().default("BHD"), phone: varchar("phone", { length: 50 }), email: varchar("email", { length: 320 }), address: text("address"), invoicePrefix: varchar("invoicePrefix", { length: 16 }).notNull().default("INV"), updatedBy: integer("updatedBy"), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
+var shopSettings = pgTable("shopSettings", { id: serial("id").primaryKey(), shopName: varchar("shopName", { length: 160 }).notNull(), arabicShopName: varchar("arabicShopName", { length: 160 }), crNumber: varchar("crNumber", { length: 80 }), currency: varchar("currency", { length: 8 }).notNull().default("BHD"), phone: varchar("phone", { length: 50 }), email: varchar("email", { length: 320 }), address: text("address"), invoicePrefix: varchar("invoicePrefix", { length: 16 }).notNull().default("INV"), loyaltyEarnRate: decimal("loyaltyEarnRate", { precision: 12, scale: 3 }).notNull().default("1.000"), loyaltyPointValue: decimal("loyaltyPointValue", { precision: 12, scale: 3 }).notNull().default("0.100"), updatedBy: integer("updatedBy"), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var customers = pgTable("customers", { id: serial("id").primaryKey(), name: varchar("name", { length: 160 }).notNull(), phone: varchar("phone", { length: 50 }).notNull(), email: varchar("email", { length: 320 }), address: text("address"), notes: text("notes"), preferredContact: varchar("preferredContact", { length: 40 }), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var measurementProfiles = pgTable("measurementProfiles", { id: serial("id").primaryKey(), customerId: integer("customerId").notNull(), version: integer("version").notNull(), measurementsJson: jsonb("measurementsJson").notNull(), fitPreference: varchar("fitPreference", { length: 100 }), collarStyle: varchar("collarStyle", { length: 100 }), pocketStyle: varchar("pocketStyle", { length: 100 }), notes: text("notes"), effectiveDate: date("effectiveDate", { mode: "date" }).notNull(), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var tailoringOrders = pgTable("tailoringOrders", { id: serial("id").primaryKey(), orderNumber: varchar("orderNumber", { length: 60 }).notNull().unique(), customerId: integer("customerId").notNull(), measurementProfileId: integer("measurementProfileId"), assignedTailorId: integer("assignedTailorId"), garmentType: varchar("garmentType", { length: 80 }).notNull().default("Thoub"), quantity: integer("quantity").notNull().default(1), status: tailoringOrderStatusEnum("status").notNull().default("draft"), dueDate: date("dueDate", { mode: "date" }), price: decimal("price", { precision: 12, scale: 3 }).notNull().default("0"), notes: text("notes"), productionNotes: text("productionNotes"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var inventoryItems = pgTable("inventoryItems", { id: serial("id").primaryKey(), code: varchar("code", { length: 60 }).notNull().unique(), name: varchar("name", { length: 160 }).notNull(), category: inventoryCategoryEnum("category").notNull(), color: varchar("color", { length: 60 }), widthInches: decimal("widthInches", { precision: 10, scale: 2 }), unit: varchar("unit", { length: 40 }).notNull().default("Meters"), quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull().default("0"), minThreshold: decimal("minThreshold", { precision: 12, scale: 3 }).notNull().default("0"), costPerUnit: decimal("costPerUnit", { precision: 12, scale: 3 }).notNull().default("0"), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var stockMovements = pgTable("stockMovements", { id: serial("id").primaryKey(), inventoryItemId: integer("inventoryItemId").notNull(), movementType: stockMovementTypeEnum("movementType").notNull(), quantityChange: decimal("quantityChange", { precision: 12, scale: 3 }).notNull(), quantityBefore: decimal("quantityBefore", { precision: 12, scale: 3 }).notNull(), quantityAfter: decimal("quantityAfter", { precision: 12, scale: 3 }).notNull(), referenceType: varchar("referenceType", { length: 40 }), referenceId: integer("referenceId"), notes: text("notes"), createdBy: integer("createdBy"), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var services = pgTable("services", { id: serial("id").primaryKey(), sku: varchar("sku", { length: 60 }).notNull().unique(), name: varchar("name", { length: 160 }).notNull(), category: serviceCategoryEnum("category").notNull(), description: text("description"), unitPrice: decimal("unitPrice", { precision: 12, scale: 3 }).notNull(), inventoryItemId: integer("inventoryItemId"), defaultFabricMeters: decimal("defaultFabricMeters", { precision: 12, scale: 3 }), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
-var sales = pgTable("sales", { id: serial("id").primaryKey(), saleNumber: varchar("saleNumber", { length: 60 }).notNull().unique(), customerId: integer("customerId"), customerNameSnapshot: varchar("customerNameSnapshot", { length: 160 }).notNull(), customerPhoneSnapshot: varchar("customerPhoneSnapshot", { length: 50 }), subtotal: decimal("subtotal", { precision: 12, scale: 3 }).notNull(), discount: decimal("discount", { precision: 12, scale: 3 }).notNull().default("0"), total: decimal("total", { precision: 12, scale: 3 }).notNull(), paymentMethod: paymentMethodEnum("paymentMethod").notNull(), paymentStatus: paymentStatusEnum("paymentStatus").notNull().default("paid"), source: saleSourceEnum("source").notNull().default("counter"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
-var saleItems = pgTable("saleItems", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull(), serviceId: integer("serviceId"), inventoryItemId: integer("inventoryItemId"), nameSnapshot: varchar("nameSnapshot", { length: 160 }).notNull(), quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(), unitPrice: decimal("unitPrice", { precision: 12, scale: 3 }).notNull(), lineTotal: decimal("total", { precision: 12, scale: 3 }).notNull(), assignedTailorId: integer("assignedTailorId"), measurementProfileId: integer("measurementProfileId") });
+var sales = pgTable("sales", { id: serial("id").primaryKey(), saleNumber: varchar("saleNumber", { length: 60 }).notNull().unique(), customerId: integer("customerId"), customerNameSnapshot: varchar("customerNameSnapshot", { length: 160 }).notNull(), customerPhoneSnapshot: varchar("customerPhoneSnapshot", { length: 50 }), subtotal: decimal("subtotal", { precision: 12, scale: 3 }).notNull(), discount: decimal("discount", { precision: 12, scale: 3 }).notNull().default("0"), total: decimal("total", { precision: 12, scale: 3 }).notNull(), paidAmount: decimal("paidAmount", { precision: 12, scale: 3 }).notNull().default("0"), paymentMethod: paymentMethodEnum("paymentMethod").notNull(), paymentStatus: paymentStatusEnum("paymentStatus").notNull().default("paid"), source: saleSourceEnum("source").notNull().default("counter"), sessionId: integer("sessionId"), discountCodeId: integer("discountCodeId"), discountCodeSnapshot: varchar("discountCodeSnapshot", { length: 80 }), loyaltyPointsEarned: decimal("loyaltyPointsEarned", { precision: 12, scale: 3 }).notNull().default("0"), loyaltyPointsRedeemed: decimal("loyaltyPointsRedeemed", { precision: 12, scale: 3 }).notNull().default("0"), returnOfSaleId: integer("returnOfSaleId"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+var saleItems = pgTable("saleItems", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull(), serviceId: integer("serviceId"), inventoryItemId: integer("inventoryItemId"), nameSnapshot: varchar("nameSnapshot", { length: 160 }).notNull(), quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(), unitPrice: decimal("unitPrice", { precision: 12, scale: 3 }).notNull(), lineDiscount: decimal("lineDiscount", { precision: 12, scale: 3 }).notNull().default("0"), lineTotal: decimal("total", { precision: 12, scale: 3 }).notNull(), assignedTailorId: integer("assignedTailorId"), measurementProfileId: integer("measurementProfileId") });
+var posSessions = pgTable("posSessions", { id: serial("id").primaryKey(), sessionNumber: varchar("sessionNumber", { length: 60 }).notNull().unique(), status: posSessionStatusEnum("status").notNull().default("open"), openedBy: integer("openedBy").notNull(), openingCash: decimal("openingCash", { precision: 12, scale: 3 }).notNull().default("0"), closingCash: decimal("closingCash", { precision: 12, scale: 3 }), openedAt: timestamp("openedAt").defaultNow().notNull(), closedAt: timestamp("closedAt"), notes: text("notes") });
+var posOrders = pgTable("posOrders", { id: serial("id").primaryKey(), orderNumber: varchar("orderNumber", { length: 60 }).notNull().unique(), sessionId: integer("sessionId"), customerId: integer("customerId"), status: posOrderStatusEnum("status").notNull().default("held"), cartJson: jsonb("cartJson").notNull(), note: text("note"), createdBy: integer("createdBy").notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), heldAt: timestamp("heldAt").defaultNow().notNull() });
+var posPayments = pgTable("posPayments", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull(), method: paymentMethodEnum("method").notNull(), amount: decimal("amount", { precision: 12, scale: 3 }).notNull(), reference: varchar("reference", { length: 160 }), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+var discountCodes = pgTable("discountCodes", { id: serial("id").primaryKey(), code: varchar("code", { length: 80 }).notNull().unique(), type: discountTypeEnum("type").notNull(), value: decimal("value", { precision: 12, scale: 3 }).notNull(), maxDiscount: decimal("maxDiscount", { precision: 12, scale: 3 }), minSubtotal: decimal("minSubtotal", { precision: 12, scale: 3 }).notNull().default("0"), usageLimit: integer("usageLimit"), usedCount: integer("usedCount").notNull().default(0), isActive: boolean("isActive").notNull().default(true), expiresAt: timestamp("expiresAt"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+var loyaltyAccounts = pgTable("loyaltyAccounts", { id: serial("id").primaryKey(), customerId: integer("customerId").notNull().unique(), pointsBalance: decimal("pointsBalance", { precision: 12, scale: 3 }).notNull().default("0"), lifetimeEarned: decimal("lifetimeEarned", { precision: 12, scale: 3 }).notNull().default("0"), lifetimeRedeemed: decimal("lifetimeRedeemed", { precision: 12, scale: 3 }).notNull().default("0"), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
+var loyaltyTransactions = pgTable("loyaltyTransactions", { id: serial("id").primaryKey(), accountId: integer("accountId").notNull(), customerId: integer("customerId").notNull(), type: loyaltyTransactionTypeEnum("type").notNull(), points: decimal("points", { precision: 12, scale: 3 }).notNull(), saleId: integer("saleId"), note: text("note"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var invoices = pgTable("invoices", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull().unique(), invoiceNumber: varchar("invoiceNumber", { length: 60 }).notNull().unique(), status: invoiceStatusEnum("status").notNull(), issuedAt: timestamp("issuedAt").defaultNow().notNull(), dueDate: date("dueDate", { mode: "date" }), notes: text("notes") });
 var staffProfiles = pgTable("staffProfiles", { id: serial("id").primaryKey(), userId: integer("userId"), name: varchar("name", { length: 160 }).notNull(), phone: varchar("phone", { length: 50 }), jobTitle: varchar("jobTitle", { length: 100 }).notNull(), baseSalary: decimal("baseSalary", { precision: 12, scale: 3 }).notNull(), commissionRate: decimal("commissionRate", { precision: 8, scale: 3 }).notNull().default("0"), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var attendance = pgTable("attendance", { id: serial("id").primaryKey(), staffProfileId: integer("staffProfileId").notNull(), workDate: date("workDate", { mode: "date" }).notNull(), status: attendanceStatusEnum("status").notNull(), notes: text("notes"), recordedBy: integer("recordedBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
@@ -368,10 +378,10 @@ var canMoveTailoringOrder = (from, to) => {
 };
 var tailoringOrderInput = z2.object({ customerId: z2.number().int().positive(), measurementProfileId: z2.number().int().positive().optional(), assignedTailorId: z2.number().int().positive().optional(), garmentType: z2.string().min(2).max(80), quantity: z2.number().int().min(1).max(20), dueDate: z2.string().optional(), price: z2.number().min(0), notes: z2.string().max(3e3), productionNotes: z2.string().max(3e3) });
 var erpRouter = router({
-  shop: router({ get: protectedProcedure.query(async () => (await dbOrThrow()).select().from(shopSettings).limit(1).then((rows) => rows[0] || null)), save: protectedProcedure.input(z2.object({ shopName: z2.string().min(2), arabicShopName: z2.string(), crNumber: z2.string(), currency: z2.string(), phone: z2.string(), email: z2.string(), address: z2.string(), invoicePrefix: z2.string().min(1).max(16) })).mutation(async ({ ctx, input }) => {
+  shop: router({ get: protectedProcedure.query(async () => (await dbOrThrow()).select().from(shopSettings).limit(1).then((rows) => rows[0] || null)), save: protectedProcedure.input(z2.object({ shopName: z2.string().min(2), arabicShopName: z2.string(), crNumber: z2.string(), currency: z2.string(), phone: z2.string(), email: z2.string(), address: z2.string(), invoicePrefix: z2.string().min(1).max(16), loyaltyEarnRate: z2.number().min(0).max(1e3), loyaltyPointValue: z2.number().min(0).max(1e3) })).mutation(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, adminRoles);
     const db = await dbOrThrow();
-    const values = { ...input, updatedBy: ctx.user.id };
+    const values = { ...input, loyaltyEarnRate: three(input.loyaltyEarnRate), loyaltyPointValue: three(input.loyaltyPointValue), updatedBy: ctx.user.id };
     const existing = (await db.select().from(shopSettings).limit(1))[0];
     if (existing) await db.update(shopSettings).set(values).where(eq2(shopSettings.id, existing.id));
     else await db.insert(shopSettings).values(values);
@@ -524,23 +534,6 @@ var erpRouter = router({
     const start = input?.startDate ? /* @__PURE__ */ new Date(`${input.startDate}T00:00:00.000Z`) : null;
     const end = input?.endDate ? /* @__PURE__ */ new Date(`${input.endDate}T23:59:59.999Z`) : null;
     return saleRows.filter((sale) => (!input?.source || sale.source === input.source) && (!input?.paymentStatus || sale.paymentStatus === input.paymentStatus) && (!start || sale.createdAt >= start) && (!end || sale.createdAt <= end) && (!search || [sale.saleNumber, sale.customerNameSnapshot, sale.customerPhoneSnapshot || ""].some((value) => value.toLowerCase().includes(search)))).map((sale) => ({ ...sale, invoice: invoiceBySale.get(sale.id) || null }));
-  }), createManual: protectedProcedure.input(manualSaleInput).mutation(async ({ ctx, input }) => {
-    await access(ctx.user.id, ctx.user.role, salesRoles);
-    const db = await dbOrThrow();
-    const [shop, customer] = await Promise.all([db.select().from(shopSettings).limit(1).then((rows) => rows[0]), input.customerId ? db.select().from(customers).where(eq2(customers.id, input.customerId)).limit(1).then((rows) => rows[0]) : Promise.resolve(void 0)]);
-    if (input.customerId && !customer) throw new TRPCError3({ code: "NOT_FOUND", message: "Choose a valid customer or record this as a walk-in sale." });
-    const subtotal = input.quantity * input.unitPrice;
-    const total = subtotal - input.discount;
-    const saleNumber = `MAN-${Date.now()}`;
-    const saleId = await db.transaction(async (tx) => {
-      const result = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: three(subtotal), discount: three(input.discount), total: three(total), paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus, source: "manual", createdBy: ctx.user.id }).returning({ id: sales.id });
-      const createdId = id(result);
-      await tx.insert(saleItems).values({ saleId: createdId, serviceId: null, inventoryItemId: null, nameSnapshot: input.description, quantity: three(input.quantity), unitPrice: three(input.unitPrice), lineTotal: three(subtotal), assignedTailorId: null, measurementProfileId: null });
-      await tx.insert(invoices).values({ saleId: createdId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(createdId).padStart(6, "0")}`, status: input.paymentStatus, notes: input.notes || "Manual sale entry \u2014 no inventory was deducted." });
-      return createdId;
-    });
-    await audit(ctx.user.id, "MANUAL_SALE_RECORDED", "sale", saleId, { saleNumber, total, paymentStatus: input.paymentStatus });
-    return { id: saleId, saleNumber, total };
   }), monthlyReport: protectedProcedure.input(monthInput).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, salesRoles);
     const db = await dbOrThrow();
@@ -569,7 +562,7 @@ var erpRouter = router({
       topLines.set(line.nameSnapshot, current);
     }
     const total = rows.reduce((sum, sale) => sum + Number(sale.total), 0);
-    return { month: input.month, shop, totals: { saleCount: rows.length, revenue: total, averageOrder: rows.length ? total / rows.length : 0, paidCount: rows.filter((sale) => sale.paymentStatus === "paid").length, partialCount: rows.filter((sale) => sale.paymentStatus === "partial").length, unpaidCount: rows.filter((sale) => sale.paymentStatus === "unpaid").length }, bySource: Array.from(bySource, ([source, values]) => ({ source, ...values })), byPayment: Array.from(byPayment, ([paymentMethod, values]) => ({ paymentMethod, ...values })), topLines: Array.from(topLines, ([name, values]) => ({ name, ...values })).sort((left, right) => right.total - left.total).slice(0, 8), sales: rows.map((sale) => ({ ...sale, invoice: invoiceBySale.get(sale.id) || null })) };
+    return { month: input.month, shop, totals: { saleCount: rows.length, revenue: total, averageOrder: rows.length ? total / rows.length : 0, paidCount: rows.filter((sale) => sale.paymentStatus === "paid").length, partialCount: rows.filter((sale) => sale.paymentStatus === "partial").length, unpaidCount: rows.filter((sale) => sale.paymentStatus === "unpaid").length }, bySource: Array.from(bySource, ([source, values]) => ({ source, ...values })), byPayment: Array.from(byPayment, ([paymentMethod2, values]) => ({ paymentMethod: paymentMethod2, ...values })), topLines: Array.from(topLines, ([name, values]) => ({ name, ...values })).sort((left, right) => right.total - left.total).slice(0, 8), sales: rows.map((sale) => ({ ...sale, invoice: invoiceBySale.get(sale.id) || null })) };
   }) }),
   invoices: router({ list: protectedProcedure.input(invoiceListInput.optional()).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, salesRoles);
@@ -877,14 +870,20 @@ var erpRouter = router({
 });
 
 // server/pos.ts
-import { eq as eq3 } from "drizzle-orm";
+import { desc as desc2, eq as eq3 } from "drizzle-orm";
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { z as z3 } from "zod";
-var money = (value) => value.toFixed(3);
-var calculateCheckoutTotal = (items, discount) => {
-  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  return { subtotal, total: Math.max(0, subtotal - discount) };
-};
+var money = (value) => Number(value.toFixed(3)).toFixed(3);
+var paymentMethod = z3.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]);
+var cartItem = z3.object({
+  serviceId: z3.number().int().optional(),
+  inventoryItemId: z3.number().int().optional(),
+  name: z3.string().min(1).max(160),
+  quantity: z3.number().positive().max(999),
+  unitPrice: z3.number().nonnegative().max(1e6),
+  lineDiscount: z3.number().min(0).max(1e6).default(0)
+}).refine((item) => Boolean(item.serviceId || item.inventoryItemId), "Choose an inventory item or catalog item.");
+var paymentLine = z3.object({ method: paymentMethod, amount: z3.number().positive().max(1e6), reference: z3.string().trim().max(160).optional() });
 async function dbOrThrow2() {
   const db = await getDb();
   if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "Database is unavailable." });
@@ -908,16 +907,30 @@ async function requireCounterAccess(userId, frameworkRole) {
   }
   if (role.role !== "sales") throw new TRPCError4({ code: "FORBIDDEN", message: "Your role is not permitted to complete counter sales." });
 }
+async function audit2(userId, action, entityType, entityId, details) {
+  const db = await dbOrThrow2();
+  await db.insert(auditLogs).values({ actorId: userId, action, entityType, entityId, detailsJson: JSON.stringify(details) });
+}
+var sessionInput = z3.object({ openingCash: z3.number().min(0).max(1e6), notes: z3.string().trim().max(2e3).optional() });
 var checkoutInput = z3.object({
-  customerId: z3.number().int().optional(),
+  sessionId: z3.number().int().positive(),
+  heldOrderId: z3.number().int().positive().optional(),
+  customerId: z3.number().int().positive().optional(),
   customerName: z3.string().min(1).max(160),
   customerPhone: z3.string().max(50).optional(),
-  discount: z3.number().min(0),
-  paymentMethod: z3.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]),
-  paymentStatus: z3.enum(["paid", "partial", "unpaid"]),
-  items: z3.array(z3.object({ serviceId: z3.number().int().optional(), inventoryItemId: z3.number().int().optional(), name: z3.string().min(1).max(160), quantity: z3.number().positive(), unitPrice: z3.number().nonnegative() }).refine((item) => Boolean(item.serviceId || item.inventoryItemId), "Choose an inventory item or catalog item.")).min(1)
+  note: z3.string().trim().max(2e3).optional(),
+  discount: z3.number().min(0).max(1e6).default(0),
+  discountCode: z3.string().trim().max(80).optional(),
+  loyaltyPointsToRedeem: z3.number().min(0).max(1e6).default(0),
+  paymentMethod: paymentMethod.default("cash"),
+  paymentStatus: z3.enum(["paid", "partial", "unpaid"]).default("paid"),
+  payments: z3.array(paymentLine).max(8).optional(),
+  items: z3.array(cartItem).min(1)
+}).superRefine((value, ctx) => {
+  for (const item of value.items) if (item.lineDiscount > item.quantity * item.unitPrice) ctx.addIssue({ code: "custom", path: ["items"], message: `The discount for ${item.name} cannot exceed its line subtotal.` });
 });
 var tailoringCheckoutInput = z3.object({
+  sessionId: z3.number().int().positive(),
   customerId: z3.number().int().positive(),
   measurementProfileId: z3.number().int().positive(),
   assignedTailorId: z3.number().int().positive(),
@@ -926,25 +939,137 @@ var tailoringCheckoutInput = z3.object({
   dueDate: z3.string().optional(),
   orderPrice: z3.number().positive(),
   paymentAmount: z3.number().positive(),
-  paymentMethod: z3.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]),
+  paymentMethod,
   notes: z3.string().max(3e3),
   productionNotes: z3.string().max(3e3)
 }).superRefine((value, ctx) => {
   if (value.paymentAmount > value.orderPrice) ctx.addIssue({ code: "custom", path: ["paymentAmount"], message: "The payment collected cannot exceed the quoted order price." });
 });
+var heldOrderInput = z3.object({
+  sessionId: z3.number().int().positive(),
+  customerId: z3.number().int().positive().optional(),
+  note: z3.string().trim().max(2e3).optional(),
+  items: z3.array(cartItem).min(1)
+});
+var returnInput = z3.object({
+  sessionId: z3.number().int().positive(),
+  originalSaleId: z3.number().int().positive(),
+  paymentMethod,
+  note: z3.string().trim().max(2e3).optional(),
+  items: z3.array(z3.object({ saleItemId: z3.number().int().positive(), quantity: z3.number().positive() })).min(1)
+});
+async function validateSession(tx, sessionId) {
+  const session = (await tx.select().from(posSessions).where(eq3(posSessions.id, sessionId)).limit(1))[0];
+  if (!session || session.status !== "open") throw new TRPCError4({ code: "BAD_REQUEST", message: "Open a POS session before completing this order." });
+  return session;
+}
+async function resolveDiscount(tx, code, subtotal) {
+  if (!code) return { id: null, snapshot: null, amount: 0 };
+  const record = (await tx.select().from(discountCodes).where(eq3(discountCodes.code, code.toUpperCase())).limit(1))[0];
+  if (!record || !record.isActive) throw new TRPCError4({ code: "BAD_REQUEST", message: "This discount code is not active." });
+  if (record.expiresAt && new Date(record.expiresAt).getTime() < Date.now()) throw new TRPCError4({ code: "BAD_REQUEST", message: "This discount code has expired." });
+  if (record.usageLimit !== null && record.usedCount >= record.usageLimit) throw new TRPCError4({ code: "BAD_REQUEST", message: "This discount code has reached its usage limit." });
+  if (subtotal < Number(record.minSubtotal)) throw new TRPCError4({ code: "BAD_REQUEST", message: `This code requires a subtotal of at least ${money(Number(record.minSubtotal))} BHD.` });
+  const raw = record.type === "percent" ? subtotal * Number(record.value) / 100 : Number(record.value);
+  const amount = Math.min(subtotal, record.maxDiscount ? Math.min(raw, Number(record.maxDiscount)) : raw);
+  return { id: record.id, snapshot: record.code, amount };
+}
 var posRouter = router({
+  session: router({
+    current: protectedProcedure.query(async ({ ctx }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      return (await db.select().from(posSessions).where(eq3(posSessions.status, "open")).orderBy(desc2(posSessions.openedAt)).limit(1))[0] || null;
+    }),
+    open: protectedProcedure.input(sessionInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const existing = (await db.select().from(posSessions).where(eq3(posSessions.status, "open")).orderBy(desc2(posSessions.openedAt)).limit(1))[0];
+      if (existing) return existing;
+      const sessionNumber = `POS-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}`;
+      const result = await db.insert(posSessions).values({ sessionNumber, openedBy: ctx.user.id, openingCash: money(input.openingCash), notes: input.notes || null }).returning();
+      const session = result[0];
+      await audit2(ctx.user.id, "POS_SESSION_OPENED", "posSession", session.id, { sessionNumber, openingCash: input.openingCash });
+      return session;
+    }),
+    close: protectedProcedure.input(z3.object({ sessionId: z3.number().int().positive(), closingCash: z3.number().min(0), notes: z3.string().trim().max(2e3).optional() })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const session = (await db.select().from(posSessions).where(eq3(posSessions.id, input.sessionId)).limit(1))[0];
+      if (!session || session.status !== "open") throw new TRPCError4({ code: "NOT_FOUND", message: "The POS session is not open." });
+      await db.update(posSessions).set({ status: "closed", closingCash: money(input.closingCash), closedAt: /* @__PURE__ */ new Date(), notes: input.notes || session.notes }).where(eq3(posSessions.id, session.id));
+      await audit2(ctx.user.id, "POS_SESSION_CLOSED", "posSession", session.id, { sessionNumber: session.sessionNumber, closingCash: input.closingCash });
+      return { success: true };
+    })
+  }),
+  orders: router({
+    held: protectedProcedure.query(async ({ ctx }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      return db.select().from(posOrders).where(eq3(posOrders.status, "held")).orderBy(desc2(posOrders.updatedAt)).limit(100);
+    }),
+    hold: protectedProcedure.input(heldOrderInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const orderNumber = `HOLD-${Date.now()}`;
+      const result = await db.insert(posOrders).values({ orderNumber, sessionId: input.sessionId, customerId: input.customerId, cartJson: input.items, note: input.note || null, createdBy: ctx.user.id }).returning({ id: posOrders.id });
+      const id2 = Number(result[0]?.id || 0);
+      await audit2(ctx.user.id, "POS_ORDER_HELD", "posOrder", id2, { orderNumber, lineCount: input.items.length });
+      return { id: id2, orderNumber };
+    }),
+    cancel: protectedProcedure.input(z3.object({ orderId: z3.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      await db.update(posOrders).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq3(posOrders.id, input.orderId));
+      await audit2(ctx.user.id, "POS_ORDER_CANCELLED", "posOrder", input.orderId, {});
+      return { success: true };
+    })
+  }),
+  discounts: router({
+    validate: protectedProcedure.input(z3.object({ code: z3.string().trim().min(1).max(80), subtotal: z3.number().min(0) })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      return resolveDiscount(db, input.code, input.subtotal);
+    })
+  }),
+  loyalty: router({
+    account: protectedProcedure.input(z3.object({ customerId: z3.number().int().positive() })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      return (await db.select().from(loyaltyAccounts).where(eq3(loyaltyAccounts.customerId, input.customerId)).limit(1))[0] || { id: null, customerId: input.customerId, pointsBalance: "0.000", lifetimeEarned: "0.000", lifetimeRedeemed: "0.000" };
+    }),
+    adjust: protectedProcedure.input(z3.object({ customerId: z3.number().int().positive(), points: z3.number().refine((value) => value !== 0), note: z3.string().trim().max(500) })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const result = await db.transaction(async (tx) => {
+        const customer = (await tx.select().from(customers).where(eq3(customers.id, input.customerId)).limit(1))[0];
+        if (!customer) throw new TRPCError4({ code: "NOT_FOUND", message: "Customer not found." });
+        let account = (await tx.select().from(loyaltyAccounts).where(eq3(loyaltyAccounts.customerId, customer.id)).limit(1))[0];
+        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
+        const next = Number(account.pointsBalance) + input.points;
+        if (next < 0) throw new TRPCError4({ code: "BAD_REQUEST", message: "The loyalty balance cannot become negative." });
+        await tx.update(loyaltyAccounts).set({ pointsBalance: money(next), lifetimeEarned: money(Number(account.lifetimeEarned) + Math.max(0, input.points)), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + Math.max(0, -input.points)), updatedAt: /* @__PURE__ */ new Date() }).where(eq3(loyaltyAccounts.id, account.id));
+        const transaction = (await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "adjust", points: money(input.points), note: input.note, createdBy: ctx.user.id }).returning({ id: loyaltyTransactions.id }))[0];
+        return { accountId: account.id, transactionId: transaction.id, pointsBalance: next };
+      });
+      await audit2(ctx.user.id, "LOYALTY_BALANCE_ADJUSTED", "customer", input.customerId, { points: input.points, note: input.note });
+      return result;
+    })
+  }),
   checkout: protectedProcedure.input(checkoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
     const db = await dbOrThrow2();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
     const checkout = await db.transaction(async (tx) => {
+      await validateSession(tx, input.sessionId);
       const resolved = [];
       for (const item of input.items) {
         if (item.inventoryItemId && !item.serviceId) {
           const stock2 = (await tx.select().from(inventoryItems).where(eq3(inventoryItems.id, item.inventoryItemId)).limit(1))[0];
           if (!stock2?.isActive) throw new TRPCError4({ code: "BAD_REQUEST", message: "This inventory item is no longer available at POS." });
-          resolved.push({ serviceId: null, inventoryItemId: stock2.id, name: stock2.name, quantity: item.quantity, unitPrice: item.unitPrice, stockPerSaleUnit: 1, stock: stock2 });
+          const lineSubtotal2 = item.quantity * item.unitPrice;
+          resolved.push({ serviceId: null, inventoryItemId: stock2.id, name: stock2.name, quantity: item.quantity, unitPrice: item.unitPrice, lineDiscount: Math.min(item.lineDiscount, lineSubtotal2), stockPerSaleUnit: 1, stock: stock2 });
           continue;
         }
         const catalogItem = (await tx.select().from(services).where(eq3(services.id, item.serviceId)).limit(1))[0];
@@ -952,14 +1077,31 @@ var posRouter = router({
         if (item.inventoryItemId && item.inventoryItemId !== catalogItem.inventoryItemId) throw new TRPCError4({ code: "BAD_REQUEST", message: `${catalogItem.name} no longer matches the selected inventory item.` });
         const stock = catalogItem.inventoryItemId ? (await tx.select().from(inventoryItems).where(eq3(inventoryItems.id, catalogItem.inventoryItemId)).limit(1))[0] : null;
         if (catalogItem.inventoryItemId && !stock?.isActive) throw new TRPCError4({ code: "BAD_REQUEST", message: `${catalogItem.name} has no active inventory link.` });
-        resolved.push({ serviceId: catalogItem.id, inventoryItemId: catalogItem.inventoryItemId, name: catalogItem.name, quantity: item.quantity, unitPrice: Number(catalogItem.unitPrice), stockPerSaleUnit: catalogItem.inventoryItemId ? Number(catalogItem.defaultFabricMeters || 1) : 0, stock: stock || null });
+        const unitPrice = Number(catalogItem.unitPrice);
+        const lineSubtotal = item.quantity * unitPrice;
+        resolved.push({ serviceId: catalogItem.id, inventoryItemId: catalogItem.inventoryItemId, name: catalogItem.name, quantity: item.quantity, unitPrice, lineDiscount: Math.min(item.lineDiscount, lineSubtotal), stockPerSaleUnit: catalogItem.inventoryItemId ? Number(catalogItem.defaultFabricMeters || 1) : 0, stock: stock || null });
       }
-      const { subtotal, total } = calculateCheckoutTotal(resolved, input.discount);
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: input.customerId, customerNameSnapshot: input.customerName, customerPhoneSnapshot: input.customerPhone || null, subtotal: money(subtotal), discount: money(input.discount), total: money(total), paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const subtotal = resolved.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+      const lineDiscount = resolved.reduce((sum, item) => sum + item.lineDiscount, 0);
+      const code = await resolveDiscount(tx, input.discountCode, subtotal - lineDiscount);
+      const customer = input.customerId ? (await tx.select().from(customers).where(eq3(customers.id, input.customerId)).limit(1))[0] : null;
+      if (input.customerId && !customer) throw new TRPCError4({ code: "NOT_FOUND", message: "The selected customer was not found." });
+      const shopPointValue = Number(shop?.loyaltyPointValue || 0.1);
+      let account = customer ? (await tx.select().from(loyaltyAccounts).where(eq3(loyaltyAccounts.customerId, customer.id)).limit(1))[0] : null;
+      if (customer && input.loyaltyPointsToRedeem > 0) {
+        if (!account || Number(account.pointsBalance) < input.loyaltyPointsToRedeem) throw new TRPCError4({ code: "BAD_REQUEST", message: "The customer does not have enough loyalty points." });
+      }
+      const loyaltyDiscount = input.loyaltyPointsToRedeem * shopPointValue;
+      const total = Math.max(0, subtotal - lineDiscount - input.discount - code.amount - loyaltyDiscount);
+      const payments = input.payments?.length ? input.payments : input.paymentStatus === "paid" ? [{ method: input.paymentMethod, amount: total }] : [];
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      if (paidAmount > total + 1e-3) throw new TRPCError4({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
+      const calculatedStatus = paidAmount >= total - 1e-3 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount + loyaltyDiscount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, loyaltyPointsRedeemed: money(input.loyaltyPointsToRedeem), createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
-        await tx.insert(saleItems).values({ saleId, serviceId: item.serviceId, inventoryItemId: item.inventoryItemId, nameSnapshot: item.name, quantity: money(item.quantity), unitPrice: money(item.unitPrice), lineTotal: money(item.quantity * item.unitPrice), assignedTailorId: null, measurementProfileId: null });
+        await tx.insert(saleItems).values({ saleId, serviceId: item.serviceId, inventoryItemId: item.inventoryItemId, nameSnapshot: item.name, quantity: money(item.quantity), unitPrice: money(item.unitPrice), lineDiscount: money(item.lineDiscount), lineTotal: money(Math.max(0, item.quantity * item.unitPrice - item.lineDiscount)), assignedTailorId: null, measurementProfileId: null });
         if (item.inventoryItemId && item.stock) {
           const before = Number(item.stock.quantity);
           const quantityDeducted = item.quantity * item.stockPerSaleUnit;
@@ -969,13 +1111,77 @@ var posRouter = router({
           await tx.insert(stockMovements).values({ inventoryItemId: item.stock.id, movementType: "sale", quantityChange: money(-quantityDeducted), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} \xB7 ${money(item.stockPerSaleUnit)} ${item.stock.unit} per sale unit` });
         }
       }
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: input.paymentStatus, notes: "Issued from touch POS." }).returning({ id: invoices.id });
+      if (payments.length) for (const payment of payments) await tx.insert(posPayments).values({ saleId, method: payment.method, amount: money(payment.amount), reference: payment.reference || null, createdBy: ctx.user.id });
+      if (code.id) await tx.update(discountCodes).set({ usedCount: (await tx.select().from(discountCodes).where(eq3(discountCodes.id, code.id)).limit(1))[0]?.usedCount ? (await tx.select().from(discountCodes).where(eq3(discountCodes.id, code.id)).limit(1))[0].usedCount + 1 : 1 }).where(eq3(discountCodes.id, code.id));
+      if (customer && (input.loyaltyPointsToRedeem > 0 || calculatedStatus !== "unpaid")) {
+        const earned = Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1e3) / 1e3;
+        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
+        const nextBalance = Number(account.pointsBalance) - input.loyaltyPointsToRedeem + earned;
+        await tx.update(loyaltyAccounts).set({ pointsBalance: money(nextBalance), lifetimeEarned: money(Number(account.lifetimeEarned) + earned), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + input.loyaltyPointsToRedeem), updatedAt: /* @__PURE__ */ new Date() }).where(eq3(loyaltyAccounts.id, account.id));
+        if (earned > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "earn", points: money(earned), saleId, note: `Earned on ${saleNumber}`, createdBy: ctx.user.id });
+        if (input.loyaltyPointsToRedeem > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "redeem", points: money(-input.loyaltyPointsToRedeem), saleId, note: `Redeemed on ${saleNumber}`, createdBy: ctx.user.id });
+        await tx.update(sales).set({ loyaltyPointsEarned: money(earned) }).where(eq3(sales.id, saleId));
+      }
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: calculatedStatus, notes: input.note || "Issued from Odoo-style POS register." }).returning({ id: invoices.id });
       const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The invoice could not be created." });
-      return { saleId, invoiceId, total, lineCount: resolved.length };
+      if (input.heldOrderId) await tx.update(posOrders).set({ status: "paid", updatedAt: /* @__PURE__ */ new Date() }).where(eq3(posOrders.id, input.heldOrderId));
+      return { saleId, invoiceId, total, paidAmount, paymentStatus: calculatedStatus, lineCount: resolved.length, loyaltyPointsEarned: customer ? Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1e3) / 1e3 : 0 };
     });
-    await db.insert(auditLogs).values({ actorId: ctx.user.id, action: "POS_CHECKOUT_COMPLETED", entityType: "sale", entityId: checkout.saleId, detailsJson: JSON.stringify({ saleNumber, total: checkout.total, lineCount: checkout.lineCount }) });
-    return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, saleNumber };
+    await audit2(ctx.user.id, "POS_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, lineCount: checkout.lineCount, loyaltyPointsEarned: checkout.loyaltyPointsEarned });
+    return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
+  }),
+  returns: router({
+    lookup: protectedProcedure.input(z3.object({ saleNumber: z3.string().trim().min(1).max(60) })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const sale = (await db.select().from(sales).where(eq3(sales.saleNumber, input.saleNumber)).limit(1))[0];
+      if (!sale || sale.returnOfSaleId) return null;
+      const items = await db.select().from(saleItems).where(eq3(saleItems.saleId, sale.id));
+      return { sale, items };
+    }),
+    create: protectedProcedure.input(returnInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow2();
+      const shop = (await db.select().from(shopSettings).limit(1))[0];
+      const result = await db.transaction(async (tx) => {
+        await validateSession(tx, input.sessionId);
+        const original = (await tx.select().from(sales).where(eq3(sales.id, input.originalSaleId)).limit(1))[0];
+        if (!original) throw new TRPCError4({ code: "NOT_FOUND", message: "The original sale was not found." });
+        const originalItems = await tx.select().from(saleItems).where(eq3(saleItems.saleId, original.id));
+        const priorReturns = await tx.select().from(sales).where(eq3(sales.returnOfSaleId, original.id));
+        const priorReturnIds = new Set(priorReturns.map((row) => row.id));
+        const priorReturnItems = (await tx.select().from(saleItems)).filter((item) => priorReturnIds.has(item.saleId));
+        const lines = input.items.map((request) => {
+          const source = originalItems.find((item) => item.id === request.saleItemId);
+          if (!source) throw new TRPCError4({ code: "BAD_REQUEST", message: "A returned item does not belong to the original sale." });
+          const alreadyReturned = priorReturnItems.filter((item) => item.nameSnapshot === source.nameSnapshot).reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
+          if (alreadyReturned + request.quantity > Number(source.quantity) + 1e-3) throw new TRPCError4({ code: "BAD_REQUEST", message: `Cannot return more ${source.nameSnapshot} than was sold.` });
+          return { source, quantity: request.quantity, lineTotal: request.quantity * Number(source.unitPrice) };
+        });
+        const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+        const saleNumber = `RET-${Date.now()}`;
+        const saleResult = await tx.insert(sales).values({ saleNumber, customerId: original.customerId, customerNameSnapshot: original.customerNameSnapshot, customerPhoneSnapshot: original.customerPhoneSnapshot, subtotal: money(-total), discount: "0.000", total: money(-total), paidAmount: money(-total), paymentMethod: input.paymentMethod, paymentStatus: "paid", source: "counter", sessionId: input.sessionId, returnOfSaleId: original.id, createdBy: ctx.user.id }).returning({ id: sales.id });
+        const saleId = Number(saleResult[0]?.id || 0);
+        for (const line of lines) {
+          await tx.insert(saleItems).values({ saleId, serviceId: line.source.serviceId, inventoryItemId: line.source.inventoryItemId, nameSnapshot: line.source.nameSnapshot, quantity: money(-line.quantity), unitPrice: money(Number(line.source.unitPrice)), lineDiscount: money(Number(line.source.lineDiscount)), lineTotal: money(-line.lineTotal), assignedTailorId: line.source.assignedTailorId, measurementProfileId: line.source.measurementProfileId });
+          if (line.source.inventoryItemId) {
+            const stock = (await tx.select().from(inventoryItems).where(eq3(inventoryItems.id, line.source.inventoryItemId)).limit(1))[0];
+            if (stock) {
+              const before = Number(stock.quantity);
+              const after = before + line.quantity;
+              await tx.update(inventoryItems).set({ quantity: money(after) }).where(eq3(inventoryItems.id, stock.id));
+              await tx.insert(stockMovements).values({ inventoryItemId: stock.id, movementType: "return", quantityChange: money(line.quantity), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} \xB7 return of ${original.saleNumber}` });
+            }
+          }
+        }
+        await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(-total), reference: `Refund of ${original.saleNumber}`, createdBy: ctx.user.id });
+        const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || `Refund of ${original.saleNumber}.` }).returning({ id: invoices.id });
+        return { saleId, invoiceId: Number(invoiceResult[0]?.id || 0), saleNumber, total: -total };
+      });
+      await audit2(ctx.user.id, "POS_RETURN_COMPLETED", "sale", result.saleId, { originalSaleId: input.originalSaleId, total: result.total });
+      return result;
+    })
   }),
   tailoringCheckout: protectedProcedure.input(tailoringCheckoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
@@ -985,66 +1191,23 @@ var posRouter = router({
     const saleNumber = `POS-TO-${Date.now()}`;
     const paymentStatus = input.paymentAmount >= input.orderPrice ? "paid" : "partial";
     const transaction = await db.transaction(async (tx) => {
+      await validateSession(tx, input.sessionId);
       const customer = (await tx.select().from(customers).where(eq3(customers.id, input.customerId)).limit(1))[0];
       if (!customer) throw new TRPCError4({ code: "NOT_FOUND", message: "Choose a valid customer before creating a tailoring order." });
       const measurement = (await tx.select().from(measurementProfiles).where(eq3(measurementProfiles.id, input.measurementProfileId)).limit(1))[0];
       if (!measurement || measurement.customerId !== customer.id) throw new TRPCError4({ code: "BAD_REQUEST", message: "Choose a saved measurement version belonging to this customer." });
       const tailor = (await tx.select().from(staffProfiles).where(eq3(staffProfiles.id, input.assignedTailorId)).limit(1))[0];
       if (!tailor?.isActive) throw new TRPCError4({ code: "BAD_REQUEST", message: "Choose an active tailor for this production order." });
-      const orderResult = await tx.insert(tailoringOrders).values({
-        orderNumber,
-        customerId: customer.id,
-        measurementProfileId: measurement.id,
-        assignedTailorId: tailor.id,
-        garmentType: input.garmentType,
-        quantity: input.quantity,
-        dueDate: input.dueDate ? new Date(input.dueDate) : null,
-        price: money(input.orderPrice),
-        status: "confirmed",
-        notes: input.notes || null,
-        productionNotes: input.productionNotes || null,
-        createdBy: ctx.user.id
-      }).returning({ id: tailoringOrders.id });
+      const orderResult = await tx.insert(tailoringOrders).values({ orderNumber, customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: input.garmentType, quantity: input.quantity, dueDate: input.dueDate ? new Date(input.dueDate) : null, price: money(input.orderPrice), status: "confirmed", notes: input.notes || null, productionNotes: input.productionNotes || null, createdBy: ctx.user.id }).returning({ id: tailoringOrders.id });
       const orderId = Number(orderResult[0]?.id || 0);
-      if (!orderId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring order could not be created." });
-      const saleResult = await tx.insert(sales).values({
-        saleNumber,
-        customerId: customer.id,
-        customerNameSnapshot: customer.name,
-        customerPhoneSnapshot: customer.phone || null,
-        subtotal: money(input.paymentAmount),
-        discount: "0.000",
-        total: money(input.paymentAmount),
-        paymentMethod: input.paymentMethod,
-        paymentStatus,
-        source: "tailoring",
-        createdBy: ctx.user.id
-      }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer.id, customerNameSnapshot: customer.name, customerPhoneSnapshot: customer.phone || null, subtotal: money(input.paymentAmount), discount: "0.000", total: money(input.paymentAmount), paidAmount: money(input.paymentAmount), paymentMethod: input.paymentMethod, paymentStatus, source: "tailoring", sessionId: input.sessionId, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
-      if (!saleId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring payment could not be recorded." });
-      const paymentLabel = paymentStatus === "paid" ? "full payment" : "deposit";
-      await tx.insert(saleItems).values({
-        saleId,
-        serviceId: null,
-        inventoryItemId: null,
-        nameSnapshot: `${input.garmentType} tailoring order \xB7 ${paymentLabel}`,
-        quantity: "1.000",
-        unitPrice: money(input.paymentAmount),
-        lineTotal: money(input.paymentAmount),
-        assignedTailorId: tailor.id,
-        measurementProfileId: measurement.id
-      });
-      const invoiceResult = await tx.insert(invoices).values({
-        saleId,
-        invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`,
-        status: paymentStatus,
-        notes: `${orderNumber} \xB7 ${input.garmentType} \xB7 quoted ${money(input.orderPrice)} BHD \xB7 ${paymentLabel} collected from POS.`
-      }).returning({ id: invoices.id });
-      const invoiceId = Number(invoiceResult[0]?.id || 0);
-      if (!invoiceId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring invoice could not be created." });
-      return { orderId, saleId, invoiceId };
+      await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(input.paymentAmount), reference: `${orderNumber} initial payment`, createdBy: ctx.user.id });
+      await tx.insert(saleItems).values({ saleId, serviceId: null, inventoryItemId: null, nameSnapshot: `${input.garmentType} tailoring order \xB7 ${paymentStatus === "paid" ? "full payment" : "deposit"}`, quantity: "1.000", unitPrice: money(input.paymentAmount), lineDiscount: "0.000", lineTotal: money(input.paymentAmount), assignedTailorId: tailor.id, measurementProfileId: measurement.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: paymentStatus, notes: `${orderNumber} \xB7 ${input.garmentType} \xB7 quoted ${money(input.orderPrice)} BHD \xB7 ${paymentStatus === "paid" ? "full payment" : "deposit"} collected from POS.` }).returning({ id: invoices.id });
+      return { orderId, saleId, invoiceId: Number(invoiceResult[0]?.id || 0) };
     });
-    await db.insert(auditLogs).values({ actorId: ctx.user.id, action: "POS_TAILORING_CHECKOUT_COMPLETED", entityType: "tailoringOrder", entityId: transaction.orderId, detailsJson: JSON.stringify({ orderNumber, saleNumber, paymentAmount: input.paymentAmount, orderPrice: input.orderPrice, paymentStatus }) });
+    await audit2(ctx.user.id, "POS_TAILORING_CHECKOUT_COMPLETED", "tailoringOrder", transaction.orderId, { orderNumber, saleNumber, paymentAmount: input.paymentAmount, orderPrice: input.orderPrice, paymentStatus });
     return { ...transaction, orderNumber, saleNumber, total: input.paymentAmount, paymentStatus };
   })
 });

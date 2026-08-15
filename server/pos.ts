@@ -1,14 +1,27 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { auditLogs, customRoles, customers, inventoryItems, invoices, measurementProfiles, saleItems, sales, services, shopSettings, staffProfiles, stockMovements, tailoringOrders, userBusinessRoles, userCustomRoles } from "../drizzle/schema";
+import { auditLogs, customers, customRoles, discountCodes, inventoryItems, invoices, loyaltyAccounts, loyaltyTransactions, measurementProfiles, posOrders, posPayments, posSessions, saleItems, sales, services, shopSettings, staffProfiles, stockMovements, tailoringOrders, userBusinessRoles, userCustomRoles } from "../drizzle/schema";
 import { getDb } from "./db";
 import { protectedProcedure, router } from "./_core/trpc";
 
-const money = (value: number) => value.toFixed(3);
-export const calculateCheckoutTotal = (items: Array<{ quantity: number; unitPrice: number }>, discount: number) => {
+const money = (value: number) => Number(value.toFixed(3)).toFixed(3);
+const paymentMethod = z.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]);
+const cartItem = z.object({
+  serviceId: z.number().int().optional(),
+  inventoryItemId: z.number().int().optional(),
+  name: z.string().min(1).max(160),
+  quantity: z.number().positive().max(999),
+  unitPrice: z.number().nonnegative().max(1000000),
+  lineDiscount: z.number().min(0).max(1000000).default(0),
+}).refine(item => Boolean(item.serviceId || item.inventoryItemId), "Choose an inventory item or catalog item.");
+const paymentLine = z.object({ method: paymentMethod, amount: z.number().positive().max(1000000), reference: z.string().trim().max(160).optional() });
+
+export const calculateCheckoutTotal = (items: Array<{ quantity: number; unitPrice: number; lineDiscount?: number }>, discount: number, loyaltyDiscount = 0) => {
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  return { subtotal, total: Math.max(0, subtotal - discount) };
+  const lineDiscount = items.reduce((sum, item) => sum + Math.min(item.quantity * item.unitPrice, item.lineDiscount || 0), 0);
+  const total = Math.max(0, subtotal - lineDiscount - discount - loyaltyDiscount);
+  return { subtotal, total };
 };
 
 async function dbOrThrow() {
@@ -36,17 +49,32 @@ async function requireCounterAccess(userId: number, frameworkRole: "user" | "adm
   if (role.role !== "sales") throw new TRPCError({ code: "FORBIDDEN", message: "Your role is not permitted to complete counter sales." });
 }
 
+async function audit(userId: number, action: string, entityType: string, entityId: number | undefined, details: unknown) {
+  const db = await dbOrThrow();
+  await db.insert(auditLogs).values({ actorId: userId, action, entityType, entityId, detailsJson: JSON.stringify(details) });
+}
+
+const sessionInput = z.object({ openingCash: z.number().min(0).max(1000000), notes: z.string().trim().max(2000).optional() });
 const checkoutInput = z.object({
-  customerId: z.number().int().optional(),
+  sessionId: z.number().int().positive(),
+  heldOrderId: z.number().int().positive().optional(),
+  customerId: z.number().int().positive().optional(),
   customerName: z.string().min(1).max(160),
   customerPhone: z.string().max(50).optional(),
-  discount: z.number().min(0),
-  paymentMethod: z.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]),
-  paymentStatus: z.enum(["paid", "partial", "unpaid"]),
-  items: z.array(z.object({ serviceId: z.number().int().optional(), inventoryItemId: z.number().int().optional(), name: z.string().min(1).max(160), quantity: z.number().positive(), unitPrice: z.number().nonnegative() }).refine(item => Boolean(item.serviceId || item.inventoryItemId), "Choose an inventory item or catalog item.")).min(1),
+  note: z.string().trim().max(2000).optional(),
+  discount: z.number().min(0).max(1000000).default(0),
+  discountCode: z.string().trim().max(80).optional(),
+  loyaltyPointsToRedeem: z.number().min(0).max(1000000).default(0),
+  paymentMethod: paymentMethod.default("cash"),
+  paymentStatus: z.enum(["paid", "partial", "unpaid"]).default("paid"),
+  payments: z.array(paymentLine).max(8).optional(),
+  items: z.array(cartItem).min(1),
+}).superRefine((value, ctx) => {
+  for (const item of value.items) if (item.lineDiscount > item.quantity * item.unitPrice) ctx.addIssue({ code: "custom", path: ["items"], message: `The discount for ${item.name} cannot exceed its line subtotal.` });
 });
 
 const tailoringCheckoutInput = z.object({
+  sessionId: z.number().int().positive(),
   customerId: z.number().int().positive(),
   measurementProfileId: z.number().int().positive(),
   assignedTailorId: z.number().int().positive(),
@@ -55,26 +83,142 @@ const tailoringCheckoutInput = z.object({
   dueDate: z.string().optional(),
   orderPrice: z.number().positive(),
   paymentAmount: z.number().positive(),
-  paymentMethod: z.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]),
+  paymentMethod,
   notes: z.string().max(3000),
   productionNotes: z.string().max(3000),
 }).superRefine((value, ctx) => {
   if (value.paymentAmount > value.orderPrice) ctx.addIssue({ code: "custom", path: ["paymentAmount"], message: "The payment collected cannot exceed the quoted order price." });
 });
 
+const heldOrderInput = z.object({
+  sessionId: z.number().int().positive(),
+  customerId: z.number().int().positive().optional(),
+  note: z.string().trim().max(2000).optional(),
+  items: z.array(cartItem).min(1),
+});
+
+const returnInput = z.object({
+  sessionId: z.number().int().positive(),
+  originalSaleId: z.number().int().positive(),
+  paymentMethod,
+  note: z.string().trim().max(2000).optional(),
+  items: z.array(z.object({ saleItemId: z.number().int().positive(), quantity: z.number().positive() })).min(1),
+});
+
+async function validateSession(tx: any, sessionId: number) {
+  const session = (await tx.select().from(posSessions).where(eq(posSessions.id, sessionId)).limit(1))[0];
+  if (!session || session.status !== "open") throw new TRPCError({ code: "BAD_REQUEST", message: "Open a POS session before completing this order." });
+  return session;
+}
+
+async function resolveDiscount(tx: any, code: string | undefined, subtotal: number) {
+  if (!code) return { id: null, snapshot: null, amount: 0 };
+  const record = (await tx.select().from(discountCodes).where(eq(discountCodes.code, code.toUpperCase())).limit(1))[0];
+  if (!record || !record.isActive) throw new TRPCError({ code: "BAD_REQUEST", message: "This discount code is not active." });
+  if (record.expiresAt && new Date(record.expiresAt).getTime() < Date.now()) throw new TRPCError({ code: "BAD_REQUEST", message: "This discount code has expired." });
+  if (record.usageLimit !== null && record.usedCount >= record.usageLimit) throw new TRPCError({ code: "BAD_REQUEST", message: "This discount code has reached its usage limit." });
+  if (subtotal < Number(record.minSubtotal)) throw new TRPCError({ code: "BAD_REQUEST", message: `This code requires a subtotal of at least ${money(Number(record.minSubtotal))} BHD.` });
+  const raw = record.type === "percent" ? subtotal * Number(record.value) / 100 : Number(record.value);
+  const amount = Math.min(subtotal, record.maxDiscount ? Math.min(raw, Number(record.maxDiscount)) : raw);
+  return { id: record.id, snapshot: record.code, amount };
+}
+
 export const posRouter = router({
+  session: router({
+    current: protectedProcedure.query(async ({ ctx }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      return (await db.select().from(posSessions).where(eq(posSessions.status, "open")).orderBy(desc(posSessions.openedAt)).limit(1))[0] || null;
+    }),
+    open: protectedProcedure.input(sessionInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const existing = (await db.select().from(posSessions).where(eq(posSessions.status, "open")).orderBy(desc(posSessions.openedAt)).limit(1))[0];
+      if (existing) return existing;
+      const sessionNumber = `POS-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}`;
+      const result = await db.insert(posSessions).values({ sessionNumber, openedBy: ctx.user.id, openingCash: money(input.openingCash), notes: input.notes || null }).returning();
+      const session = result[0];
+      await audit(ctx.user.id, "POS_SESSION_OPENED", "posSession", session.id, { sessionNumber, openingCash: input.openingCash });
+      return session;
+    }),
+    close: protectedProcedure.input(z.object({ sessionId: z.number().int().positive(), closingCash: z.number().min(0), notes: z.string().trim().max(2000).optional() })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const session = (await db.select().from(posSessions).where(eq(posSessions.id, input.sessionId)).limit(1))[0];
+      if (!session || session.status !== "open") throw new TRPCError({ code: "NOT_FOUND", message: "The POS session is not open." });
+      await db.update(posSessions).set({ status: "closed", closingCash: money(input.closingCash), closedAt: new Date(), notes: input.notes || session.notes }).where(eq(posSessions.id, session.id));
+      await audit(ctx.user.id, "POS_SESSION_CLOSED", "posSession", session.id, { sessionNumber: session.sessionNumber, closingCash: input.closingCash });
+      return { success: true };
+    }),
+  }),
+  orders: router({
+    held: protectedProcedure.query(async ({ ctx }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      return db.select().from(posOrders).where(eq(posOrders.status, "held")).orderBy(desc(posOrders.updatedAt)).limit(100);
+    }),
+    hold: protectedProcedure.input(heldOrderInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const orderNumber = `HOLD-${Date.now()}`;
+      const result = await db.insert(posOrders).values({ orderNumber, sessionId: input.sessionId, customerId: input.customerId, cartJson: input.items, note: input.note || null, createdBy: ctx.user.id }).returning({ id: posOrders.id });
+      const id = Number(result[0]?.id || 0);
+      await audit(ctx.user.id, "POS_ORDER_HELD", "posOrder", id, { orderNumber, lineCount: input.items.length });
+      return { id, orderNumber };
+    }),
+    cancel: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      await db.update(posOrders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(posOrders.id, input.orderId));
+      await audit(ctx.user.id, "POS_ORDER_CANCELLED", "posOrder", input.orderId, {});
+      return { success: true };
+    }),
+  }),
+  discounts: router({
+    validate: protectedProcedure.input(z.object({ code: z.string().trim().min(1).max(80), subtotal: z.number().min(0) })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      return resolveDiscount(db, input.code, input.subtotal);
+    }),
+  }),
+  loyalty: router({
+    account: protectedProcedure.input(z.object({ customerId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      return (await db.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, input.customerId)).limit(1))[0] || { id: null, customerId: input.customerId, pointsBalance: "0.000", lifetimeEarned: "0.000", lifetimeRedeemed: "0.000" };
+    }),
+    adjust: protectedProcedure.input(z.object({ customerId: z.number().int().positive(), points: z.number().refine(value => value !== 0), note: z.string().trim().max(500) })).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const result = await db.transaction(async tx => {
+        const customer = (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0];
+        if (!customer) throw new TRPCError({ code: "NOT_FOUND", message: "Customer not found." });
+        let account = (await tx.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, customer.id)).limit(1))[0];
+        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
+        const next = Number(account.pointsBalance) + input.points;
+        if (next < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "The loyalty balance cannot become negative." });
+        await tx.update(loyaltyAccounts).set({ pointsBalance: money(next), lifetimeEarned: money(Number(account.lifetimeEarned) + Math.max(0, input.points)), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + Math.max(0, -input.points)), updatedAt: new Date() }).where(eq(loyaltyAccounts.id, account.id));
+        const transaction = (await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "adjust", points: money(input.points), note: input.note, createdBy: ctx.user.id }).returning({ id: loyaltyTransactions.id }))[0];
+        return { accountId: account.id, transactionId: transaction.id, pointsBalance: next };
+      });
+      await audit(ctx.user.id, "LOYALTY_BALANCE_ADJUSTED", "customer", input.customerId, { points: input.points, note: input.note });
+      return result;
+    }),
+  }),
   checkout: protectedProcedure.input(checkoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
     const db = await dbOrThrow();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
     const checkout = await db.transaction(async tx => {
-      const resolved = [] as Array<{ serviceId: number | null; inventoryItemId: number | null; name: string; quantity: number; unitPrice: number; stockPerSaleUnit: number; stock: { id: number; name: string; quantity: string; unit: string } | null }>;
+      await validateSession(tx, input.sessionId);
+      const resolved = [] as Array<{ serviceId: number | null; inventoryItemId: number | null; name: string; quantity: number; unitPrice: number; lineDiscount: number; stockPerSaleUnit: number; stock: { id: number; name: string; quantity: string; unit: string } | null }>;
       for (const item of input.items) {
         if (item.inventoryItemId && !item.serviceId) {
           const stock = (await tx.select().from(inventoryItems).where(eq(inventoryItems.id, item.inventoryItemId)).limit(1))[0];
           if (!stock?.isActive) throw new TRPCError({ code: "BAD_REQUEST", message: "This inventory item is no longer available at POS." });
-          resolved.push({ serviceId: null, inventoryItemId: stock.id, name: stock.name, quantity: item.quantity, unitPrice: item.unitPrice, stockPerSaleUnit: 1, stock });
+          const lineSubtotal = item.quantity * item.unitPrice;
+          resolved.push({ serviceId: null, inventoryItemId: stock.id, name: stock.name, quantity: item.quantity, unitPrice: item.unitPrice, lineDiscount: Math.min(item.lineDiscount, lineSubtotal), stockPerSaleUnit: 1, stock });
           continue;
         }
         const catalogItem = (await tx.select().from(services).where(eq(services.id, item.serviceId!)).limit(1))[0];
@@ -82,14 +226,31 @@ export const posRouter = router({
         if (item.inventoryItemId && item.inventoryItemId !== catalogItem.inventoryItemId) throw new TRPCError({ code: "BAD_REQUEST", message: `${catalogItem.name} no longer matches the selected inventory item.` });
         const stock = catalogItem.inventoryItemId ? (await tx.select().from(inventoryItems).where(eq(inventoryItems.id, catalogItem.inventoryItemId)).limit(1))[0] : null;
         if (catalogItem.inventoryItemId && !stock?.isActive) throw new TRPCError({ code: "BAD_REQUEST", message: `${catalogItem.name} has no active inventory link.` });
-        resolved.push({ serviceId: catalogItem.id, inventoryItemId: catalogItem.inventoryItemId, name: catalogItem.name, quantity: item.quantity, unitPrice: Number(catalogItem.unitPrice), stockPerSaleUnit: catalogItem.inventoryItemId ? Number(catalogItem.defaultFabricMeters || 1) : 0, stock: stock || null });
+        const unitPrice = Number(catalogItem.unitPrice);
+        const lineSubtotal = item.quantity * unitPrice;
+        resolved.push({ serviceId: catalogItem.id, inventoryItemId: catalogItem.inventoryItemId, name: catalogItem.name, quantity: item.quantity, unitPrice, lineDiscount: Math.min(item.lineDiscount, lineSubtotal), stockPerSaleUnit: catalogItem.inventoryItemId ? Number(catalogItem.defaultFabricMeters || 1) : 0, stock: stock || null });
       }
-      const { subtotal, total } = calculateCheckoutTotal(resolved, input.discount);
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: input.customerId, customerNameSnapshot: input.customerName, customerPhoneSnapshot: input.customerPhone || null, subtotal: money(subtotal), discount: money(input.discount), total: money(total), paymentMethod: input.paymentMethod, paymentStatus: input.paymentStatus, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const subtotal = resolved.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+      const lineDiscount = resolved.reduce((sum, item) => sum + item.lineDiscount, 0);
+      const code = await resolveDiscount(tx, input.discountCode, subtotal - lineDiscount);
+      const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
+      if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
+      const shopPointValue = Number(shop?.loyaltyPointValue || 0.1);
+      let account = customer ? (await tx.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, customer.id)).limit(1))[0] : null;
+      if (customer && input.loyaltyPointsToRedeem > 0) {
+        if (!account || Number(account.pointsBalance) < input.loyaltyPointsToRedeem) throw new TRPCError({ code: "BAD_REQUEST", message: "The customer does not have enough loyalty points." });
+      }
+      const loyaltyDiscount = input.loyaltyPointsToRedeem * shopPointValue;
+      const total = Math.max(0, subtotal - lineDiscount - input.discount - code.amount - loyaltyDiscount);
+      const payments = input.payments?.length ? input.payments : input.paymentStatus === "paid" ? [{ method: input.paymentMethod, amount: total }] : [];
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      if (paidAmount > total + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
+      const calculatedStatus = paidAmount >= total - 0.001 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount + loyaltyDiscount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, loyaltyPointsRedeemed: money(input.loyaltyPointsToRedeem), createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
-        await tx.insert(saleItems).values({ saleId, serviceId: item.serviceId, inventoryItemId: item.inventoryItemId, nameSnapshot: item.name, quantity: money(item.quantity), unitPrice: money(item.unitPrice), lineTotal: money(item.quantity * item.unitPrice), assignedTailorId: null, measurementProfileId: null });
+        await tx.insert(saleItems).values({ saleId, serviceId: item.serviceId, inventoryItemId: item.inventoryItemId, nameSnapshot: item.name, quantity: money(item.quantity), unitPrice: money(item.unitPrice), lineDiscount: money(item.lineDiscount), lineTotal: money(Math.max(0, item.quantity * item.unitPrice - item.lineDiscount)), assignedTailorId: null, measurementProfileId: null });
         if (item.inventoryItemId && item.stock) {
           const before = Number(item.stock.quantity);
           const quantityDeducted = item.quantity * item.stockPerSaleUnit;
@@ -99,13 +260,77 @@ export const posRouter = router({
           await tx.insert(stockMovements).values({ inventoryItemId: item.stock.id, movementType: "sale", quantityChange: money(-quantityDeducted), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} · ${money(item.stockPerSaleUnit)} ${item.stock.unit} per sale unit` });
         }
       }
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: input.paymentStatus, notes: "Issued from touch POS." }).returning({ id: invoices.id });
+      if (payments.length) for (const payment of payments) await tx.insert(posPayments).values({ saleId, method: payment.method, amount: money(payment.amount), reference: payment.reference || null, createdBy: ctx.user.id });
+      if (code.id) await tx.update(discountCodes).set({ usedCount: (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0]?.usedCount ? (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0].usedCount + 1 : 1 }).where(eq(discountCodes.id, code.id));
+      if (customer && (input.loyaltyPointsToRedeem > 0 || calculatedStatus !== "unpaid")) {
+        const earned = Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1000) / 1000;
+        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
+        const nextBalance = Number(account.pointsBalance) - input.loyaltyPointsToRedeem + earned;
+        await tx.update(loyaltyAccounts).set({ pointsBalance: money(nextBalance), lifetimeEarned: money(Number(account.lifetimeEarned) + earned), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + input.loyaltyPointsToRedeem), updatedAt: new Date() }).where(eq(loyaltyAccounts.id, account.id));
+        if (earned > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "earn", points: money(earned), saleId, note: `Earned on ${saleNumber}`, createdBy: ctx.user.id });
+        if (input.loyaltyPointsToRedeem > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "redeem", points: money(-input.loyaltyPointsToRedeem), saleId, note: `Redeemed on ${saleNumber}`, createdBy: ctx.user.id });
+        await tx.update(sales).set({ loyaltyPointsEarned: money(earned) }).where(eq(sales.id, saleId));
+      }
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: calculatedStatus, notes: input.note || "Issued from Odoo-style POS register." }).returning({ id: invoices.id });
       const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The invoice could not be created." });
-      return { saleId, invoiceId, total, lineCount: resolved.length };
+      if (input.heldOrderId) await tx.update(posOrders).set({ status: "paid", updatedAt: new Date() }).where(eq(posOrders.id, input.heldOrderId));
+      return { saleId, invoiceId, total, paidAmount, paymentStatus: calculatedStatus, lineCount: resolved.length, loyaltyPointsEarned: customer ? Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1000) / 1000 : 0 };
     });
-    await db.insert(auditLogs).values({ actorId: ctx.user.id, action: "POS_CHECKOUT_COMPLETED", entityType: "sale", entityId: checkout.saleId, detailsJson: JSON.stringify({ saleNumber, total: checkout.total, lineCount: checkout.lineCount }) });
-    return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, saleNumber };
+    await audit(ctx.user.id, "POS_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, lineCount: checkout.lineCount, loyaltyPointsEarned: checkout.loyaltyPointsEarned });
+    return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
+  }),
+  returns: router({
+    lookup: protectedProcedure.input(z.object({ saleNumber: z.string().trim().min(1).max(60) })).query(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const sale = (await db.select().from(sales).where(eq(sales.saleNumber, input.saleNumber)).limit(1))[0];
+      if (!sale || sale.returnOfSaleId) return null;
+      const items = await db.select().from(saleItems).where(eq(saleItems.saleId, sale.id));
+      return { sale, items };
+    }),
+    create: protectedProcedure.input(returnInput).mutation(async ({ ctx, input }) => {
+      await requireCounterAccess(ctx.user.id, ctx.user.role);
+      const db = await dbOrThrow();
+      const shop = (await db.select().from(shopSettings).limit(1))[0];
+      const result = await db.transaction(async tx => {
+        await validateSession(tx, input.sessionId);
+        const original = (await tx.select().from(sales).where(eq(sales.id, input.originalSaleId)).limit(1))[0];
+        if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "The original sale was not found." });
+        const originalItems = await tx.select().from(saleItems).where(eq(saleItems.saleId, original.id));
+        const priorReturns = await tx.select().from(sales).where(eq(sales.returnOfSaleId, original.id));
+        const priorReturnIds = new Set(priorReturns.map(row => row.id));
+        const priorReturnItems = (await tx.select().from(saleItems)).filter(item => priorReturnIds.has(item.saleId));
+        const lines = input.items.map(request => {
+          const source = originalItems.find(item => item.id === request.saleItemId);
+          if (!source) throw new TRPCError({ code: "BAD_REQUEST", message: "A returned item does not belong to the original sale." });
+          const alreadyReturned = priorReturnItems.filter(item => item.nameSnapshot === source.nameSnapshot).reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
+          if (alreadyReturned + request.quantity > Number(source.quantity) + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: `Cannot return more ${source.nameSnapshot} than was sold.` });
+          return { source, quantity: request.quantity, lineTotal: request.quantity * Number(source.unitPrice) };
+        });
+        const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+        const saleNumber = `RET-${Date.now()}`;
+        const saleResult = await tx.insert(sales).values({ saleNumber, customerId: original.customerId, customerNameSnapshot: original.customerNameSnapshot, customerPhoneSnapshot: original.customerPhoneSnapshot, subtotal: money(-total), discount: "0.000", total: money(-total), paidAmount: money(-total), paymentMethod: input.paymentMethod, paymentStatus: "paid", source: "counter", sessionId: input.sessionId, returnOfSaleId: original.id, createdBy: ctx.user.id }).returning({ id: sales.id });
+        const saleId = Number(saleResult[0]?.id || 0);
+        for (const line of lines) {
+          await tx.insert(saleItems).values({ saleId, serviceId: line.source.serviceId, inventoryItemId: line.source.inventoryItemId, nameSnapshot: line.source.nameSnapshot, quantity: money(-line.quantity), unitPrice: money(Number(line.source.unitPrice)), lineDiscount: money(Number(line.source.lineDiscount)), lineTotal: money(-line.lineTotal), assignedTailorId: line.source.assignedTailorId, measurementProfileId: line.source.measurementProfileId });
+          if (line.source.inventoryItemId) {
+            const stock = (await tx.select().from(inventoryItems).where(eq(inventoryItems.id, line.source.inventoryItemId)).limit(1))[0];
+            if (stock) {
+              const before = Number(stock.quantity);
+              const after = before + line.quantity;
+              await tx.update(inventoryItems).set({ quantity: money(after) }).where(eq(inventoryItems.id, stock.id));
+              await tx.insert(stockMovements).values({ inventoryItemId: stock.id, movementType: "return", quantityChange: money(line.quantity), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} · return of ${original.saleNumber}` });
+            }
+          }
+        }
+        await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(-total), reference: `Refund of ${original.saleNumber}`, createdBy: ctx.user.id });
+        const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || `Refund of ${original.saleNumber}.` }).returning({ id: invoices.id });
+        return { saleId, invoiceId: Number(invoiceResult[0]?.id || 0), saleNumber, total: -total };
+      });
+      await audit(ctx.user.id, "POS_RETURN_COMPLETED", "sale", result.saleId, { originalSaleId: input.originalSaleId, total: result.total });
+      return result;
+    }),
   }),
   tailoringCheckout: protectedProcedure.input(tailoringCheckoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
@@ -115,69 +340,23 @@ export const posRouter = router({
     const saleNumber = `POS-TO-${Date.now()}`;
     const paymentStatus = input.paymentAmount >= input.orderPrice ? "paid" : "partial" as const;
     const transaction = await db.transaction(async tx => {
+      await validateSession(tx, input.sessionId);
       const customer = (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0];
       if (!customer) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a valid customer before creating a tailoring order." });
       const measurement = (await tx.select().from(measurementProfiles).where(eq(measurementProfiles.id, input.measurementProfileId)).limit(1))[0];
       if (!measurement || measurement.customerId !== customer.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a saved measurement version belonging to this customer." });
       const tailor = (await tx.select().from(staffProfiles).where(eq(staffProfiles.id, input.assignedTailorId)).limit(1))[0];
       if (!tailor?.isActive) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose an active tailor for this production order." });
-
-      const orderResult = await tx.insert(tailoringOrders).values({
-        orderNumber,
-        customerId: customer.id,
-        measurementProfileId: measurement.id,
-        assignedTailorId: tailor.id,
-        garmentType: input.garmentType,
-        quantity: input.quantity,
-        dueDate: input.dueDate ? new Date(input.dueDate) : null,
-        price: money(input.orderPrice),
-        status: "confirmed",
-        notes: input.notes || null,
-        productionNotes: input.productionNotes || null,
-        createdBy: ctx.user.id,
-      }).returning({ id: tailoringOrders.id });
+      const orderResult = await tx.insert(tailoringOrders).values({ orderNumber, customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: input.garmentType, quantity: input.quantity, dueDate: input.dueDate ? new Date(input.dueDate) : null, price: money(input.orderPrice), status: "confirmed", notes: input.notes || null, productionNotes: input.productionNotes || null, createdBy: ctx.user.id }).returning({ id: tailoringOrders.id });
       const orderId = Number(orderResult[0]?.id || 0);
-      if (!orderId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring order could not be created." });
-
-      const saleResult = await tx.insert(sales).values({
-        saleNumber,
-        customerId: customer.id,
-        customerNameSnapshot: customer.name,
-        customerPhoneSnapshot: customer.phone || null,
-        subtotal: money(input.paymentAmount),
-        discount: "0.000",
-        total: money(input.paymentAmount),
-        paymentMethod: input.paymentMethod,
-        paymentStatus,
-        source: "tailoring",
-        createdBy: ctx.user.id,
-      }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer.id, customerNameSnapshot: customer.name, customerPhoneSnapshot: customer.phone || null, subtotal: money(input.paymentAmount), discount: "0.000", total: money(input.paymentAmount), paidAmount: money(input.paymentAmount), paymentMethod: input.paymentMethod, paymentStatus, source: "tailoring", sessionId: input.sessionId, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
-      if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring payment could not be recorded." });
-
-      const paymentLabel = paymentStatus === "paid" ? "full payment" : "deposit";
-      await tx.insert(saleItems).values({
-        saleId,
-        serviceId: null,
-        inventoryItemId: null,
-        nameSnapshot: `${input.garmentType} tailoring order · ${paymentLabel}`,
-        quantity: "1.000",
-        unitPrice: money(input.paymentAmount),
-        lineTotal: money(input.paymentAmount),
-        assignedTailorId: tailor.id,
-        measurementProfileId: measurement.id,
-      });
-      const invoiceResult = await tx.insert(invoices).values({
-        saleId,
-        invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`,
-        status: paymentStatus,
-        notes: `${orderNumber} · ${input.garmentType} · quoted ${money(input.orderPrice)} BHD · ${paymentLabel} collected from POS.`,
-      }).returning({ id: invoices.id });
-      const invoiceId = Number(invoiceResult[0]?.id || 0);
-      if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The tailoring invoice could not be created." });
-      return { orderId, saleId, invoiceId };
+      await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(input.paymentAmount), reference: `${orderNumber} initial payment`, createdBy: ctx.user.id });
+      await tx.insert(saleItems).values({ saleId, serviceId: null, inventoryItemId: null, nameSnapshot: `${input.garmentType} tailoring order · ${paymentStatus === "paid" ? "full payment" : "deposit"}`, quantity: "1.000", unitPrice: money(input.paymentAmount), lineDiscount: "0.000", lineTotal: money(input.paymentAmount), assignedTailorId: tailor.id, measurementProfileId: measurement.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: paymentStatus, notes: `${orderNumber} · ${input.garmentType} · quoted ${money(input.orderPrice)} BHD · ${paymentStatus === "paid" ? "full payment" : "deposit"} collected from POS.` }).returning({ id: invoices.id });
+      return { orderId, saleId, invoiceId: Number(invoiceResult[0]?.id || 0) };
     });
-    await db.insert(auditLogs).values({ actorId: ctx.user.id, action: "POS_TAILORING_CHECKOUT_COMPLETED", entityType: "tailoringOrder", entityId: transaction.orderId, detailsJson: JSON.stringify({ orderNumber, saleNumber, paymentAmount: input.paymentAmount, orderPrice: input.orderPrice, paymentStatus }) });
+    await audit(ctx.user.id, "POS_TAILORING_CHECKOUT_COMPLETED", "tailoringOrder", transaction.orderId, { orderNumber, saleNumber, paymentAmount: input.paymentAmount, orderPrice: input.orderPrice, paymentStatus });
     return { ...transaction, orderNumber, saleNumber, total: input.paymentAmount, paymentStatus };
   }),
 });

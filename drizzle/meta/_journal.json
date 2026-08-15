@@ -8,6 +8,13 @@
       "when": 1786712026240,
       "tag": "0000_long_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786773407993,
+      "tag": "0001_pos_domain",
+      "breakpoints": true
     }
   ]
 }

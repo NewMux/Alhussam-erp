@@ -16,9 +16,9 @@ describe("ERP input contracts", () => {
     const caller = appRouter.createCaller(context());
     await expect(caller.erp.customers.create({ name: "A", phone: "1", email: "invalid-email", address: "", notes: "", preferredContact: "WhatsApp" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
-  it("rejects a manual sale whose discount exceeds its subtotal before persistence", async () => {
-    const caller = appRouter.createCaller(context());
-    await expect(caller.erp.salesHistory.createManual({ customerName: "Walk-in customer", customerPhone: "", description: "Alteration service", quantity: 1, unitPrice: 10, discount: 11, paymentMethod: "cash", paymentStatus: "paid", notes: "" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  it("does not expose manual-sale creation through Sales History", async () => {
+    const caller = appRouter.createCaller(context()) as any;
+    await expect(caller.erp.salesHistory.createManual({})).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
   it("calculates inclusive UTC month boundaries for monthly reporting", () => {
     const window = getMonthWindow("2026-02");
