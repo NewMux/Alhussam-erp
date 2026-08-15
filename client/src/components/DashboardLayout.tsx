@@ -5,6 +5,7 @@ import { ClipboardList, FileText, LayoutDashboard, LogOut, MoreHorizontal, Packa
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { clientBrand } from "@/lib/branding";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const navigation = [
@@ -36,8 +37,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return <div className="min-h-[100dvh] bg-stone-50">
     <aside className="fixed inset-y-0 hidden w-64 border-r bg-white p-4 lg:block">
       <div className="flex items-center gap-3 px-3 py-4">
-        <div className="rounded-xl bg-primary p-2 text-primary-foreground"><Scissors className="h-5 w-5" /></div>
-        <div><p className="font-semibold">Al-Mamlaka</p><p className="text-xs text-muted-foreground">Tailor ERP</p></div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white shadow-sm">
+          <img src={clientBrand.logoSrc} alt={clientBrand.logoAlt} className="h-full w-full object-contain" />
+        </div>
+        <div><p className="font-semibold">{clientBrand.name}</p><p className="text-xs text-muted-foreground">Tailor ERP</p></div>
       </div>
       <nav className="mt-6 space-y-1" aria-label="Main navigation">
         {navigation.map(item => {
@@ -54,8 +57,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <header className="sticky top-0 z-30 border-b bg-white/95 px-4 py-3 backdrop-blur lg:static lg:ml-64 lg:bg-white lg:px-5 lg:py-4">
       <div className="mx-auto flex max-w-7xl items-center gap-3">
         <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
-          <div className="rounded-xl bg-primary p-2 text-primary-foreground"><Scissors className="h-4 w-4" /></div>
-          <div className="min-w-0"><p className="truncate text-sm font-semibold">Al-Mamlaka</p><p className="truncate text-xs text-muted-foreground">{currentPage?.label || "Tailor ERP"}</p></div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white shadow-sm">
+            <img src={clientBrand.logoSrc} alt={clientBrand.logoAlt} className="h-full w-full object-contain" />
+          </div>
+          <div className="min-w-0"><p className="truncate text-sm font-semibold">{clientBrand.name}</p><p className="truncate text-xs text-muted-foreground">{currentPage?.label || "Tailor ERP"}</p></div>
         </div>
         <p className="ml-auto hidden text-sm text-muted-foreground lg:block">Secure business workspace</p>
         <Button variant="ghost" size="icon" className="ml-auto h-11 w-11 rounded-xl lg:hidden" onClick={() => setMoreOpen(true)} aria-label="Open more navigation"><MoreHorizontal className="h-5 w-5" /></Button>
