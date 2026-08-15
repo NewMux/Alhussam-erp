@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { auditLogs, customers, customRoles, discountCodes, inventoryItems, invoices, loyaltyAccounts, loyaltyTransactions, measurementProfiles, posOrders, posPayments, posSessions, saleItems, sales, services, shopSettings, staffProfiles, stockMovements, tailoringOrders, userBusinessRoles, userCustomRoles } from "../drizzle/schema";
+import { auditLogs, customers, customRoles, discountCodes, inventoryItems, invoices, measurementProfiles, posOrders, posPayments, posSessions, saleItems, sales, services, shopSettings, staffProfiles, stockMovements, tailoringOrders, userBusinessRoles, userCustomRoles } from "../drizzle/schema";
 import { getDb } from "./db";
 import { protectedProcedure, router } from "./_core/trpc";
 
@@ -17,10 +17,10 @@ const cartItem = z.object({
 }).refine(item => Boolean(item.serviceId || item.inventoryItemId), "Choose an inventory item or catalog item.");
 const paymentLine = z.object({ method: paymentMethod, amount: z.number().positive().max(1000000), reference: z.string().trim().max(160).optional() });
 
-export const calculateCheckoutTotal = (items: Array<{ quantity: number; unitPrice: number; lineDiscount?: number }>, discount: number, loyaltyDiscount = 0) => {
+export const calculateCheckoutTotal = (items: Array<{ quantity: number; unitPrice: number; lineDiscount?: number }>, discount: number) => {
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const lineDiscount = items.reduce((sum, item) => sum + Math.min(item.quantity * item.unitPrice, item.lineDiscount || 0), 0);
-  const total = Math.max(0, subtotal - lineDiscount - discount - loyaltyDiscount);
+  const total = Math.max(0, subtotal - lineDiscount - discount);
   return { subtotal, total };
 };
 
@@ -64,7 +64,6 @@ const checkoutInput = z.object({
   note: z.string().trim().max(2000).optional(),
   discount: z.number().min(0).max(1000000).default(0),
   discountCode: z.string().trim().max(80).optional(),
-  loyaltyPointsToRedeem: z.number().min(0).max(1000000).default(0),
   paymentMethod: paymentMethod.default("cash"),
   paymentStatus: z.enum(["paid", "partial", "unpaid"]).default("paid"),
   payments: z.array(paymentLine).max(8).optional(),
@@ -191,30 +190,6 @@ export const posRouter = router({
       return resolveDiscount(db, input.code, input.subtotal);
     }),
   }),
-  loyalty: router({
-    account: protectedProcedure.input(z.object({ customerId: z.number().int().positive() })).query(async ({ ctx, input }) => {
-      await requireCounterAccess(ctx.user.id, ctx.user.role);
-      const db = await dbOrThrow();
-      return (await db.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, input.customerId)).limit(1))[0] || { id: null, customerId: input.customerId, pointsBalance: "0.000", lifetimeEarned: "0.000", lifetimeRedeemed: "0.000" };
-    }),
-    adjust: protectedProcedure.input(z.object({ customerId: z.number().int().positive(), points: z.number().refine(value => value !== 0), note: z.string().trim().max(500) })).mutation(async ({ ctx, input }) => {
-      await requireCounterAccess(ctx.user.id, ctx.user.role);
-      const db = await dbOrThrow();
-      const result = await db.transaction(async tx => {
-        const customer = (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0];
-        if (!customer) throw new TRPCError({ code: "NOT_FOUND", message: "Customer not found." });
-        let account = (await tx.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, customer.id)).limit(1))[0];
-        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
-        const next = Number(account.pointsBalance) + input.points;
-        if (next < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "The loyalty balance cannot become negative." });
-        await tx.update(loyaltyAccounts).set({ pointsBalance: money(next), lifetimeEarned: money(Number(account.lifetimeEarned) + Math.max(0, input.points)), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + Math.max(0, -input.points)), updatedAt: new Date() }).where(eq(loyaltyAccounts.id, account.id));
-        const transaction = (await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "adjust", points: money(input.points), note: input.note, createdBy: ctx.user.id }).returning({ id: loyaltyTransactions.id }))[0];
-        return { accountId: account.id, transactionId: transaction.id, pointsBalance: next };
-      });
-      await audit(ctx.user.id, "LOYALTY_BALANCE_ADJUSTED", "customer", input.customerId, { points: input.points, note: input.note });
-      return result;
-    }),
-  }),
   checkout: protectedProcedure.input(checkoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
     const db = await dbOrThrow();
@@ -245,18 +220,12 @@ export const posRouter = router({
       const code = await resolveDiscount(tx, input.discountCode, subtotal - lineDiscount);
       const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
       if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
-      const shopPointValue = Number(shop?.loyaltyPointValue || 0.1);
-      let account = customer ? (await tx.select().from(loyaltyAccounts).where(eq(loyaltyAccounts.customerId, customer.id)).limit(1))[0] : null;
-      if (customer && input.loyaltyPointsToRedeem > 0) {
-        if (!account || Number(account.pointsBalance) < input.loyaltyPointsToRedeem) throw new TRPCError({ code: "BAD_REQUEST", message: "The customer does not have enough loyalty points." });
-      }
-      const loyaltyDiscount = input.loyaltyPointsToRedeem * shopPointValue;
-      const total = Math.max(0, subtotal - lineDiscount - input.discount - code.amount - loyaltyDiscount);
+      const total = Math.max(0, subtotal - lineDiscount - input.discount - code.amount);
       const payments = input.payments?.length ? input.payments : input.paymentStatus === "paid" ? [{ method: input.paymentMethod, amount: total }] : [];
       const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
       if (paidAmount > total + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
       const calculatedStatus = paidAmount >= total - 0.001 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount + loyaltyDiscount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, loyaltyPointsRedeemed: money(input.loyaltyPointsToRedeem), createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
@@ -272,22 +241,13 @@ export const posRouter = router({
       }
       if (payments.length) for (const payment of payments) await tx.insert(posPayments).values({ saleId, method: payment.method, amount: money(payment.amount), reference: payment.reference || null, createdBy: ctx.user.id });
       if (code.id) await tx.update(discountCodes).set({ usedCount: (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0]?.usedCount ? (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0].usedCount + 1 : 1 }).where(eq(discountCodes.id, code.id));
-      if (customer && (input.loyaltyPointsToRedeem > 0 || calculatedStatus !== "unpaid")) {
-        const earned = Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1000) / 1000;
-        if (!account) account = (await tx.insert(loyaltyAccounts).values({ customerId: customer.id }).returning())[0];
-        const nextBalance = Number(account.pointsBalance) - input.loyaltyPointsToRedeem + earned;
-        await tx.update(loyaltyAccounts).set({ pointsBalance: money(nextBalance), lifetimeEarned: money(Number(account.lifetimeEarned) + earned), lifetimeRedeemed: money(Number(account.lifetimeRedeemed) + input.loyaltyPointsToRedeem), updatedAt: new Date() }).where(eq(loyaltyAccounts.id, account.id));
-        if (earned > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "earn", points: money(earned), saleId, note: `Earned on ${saleNumber}`, createdBy: ctx.user.id });
-        if (input.loyaltyPointsToRedeem > 0) await tx.insert(loyaltyTransactions).values({ accountId: account.id, customerId: customer.id, type: "redeem", points: money(-input.loyaltyPointsToRedeem), saleId, note: `Redeemed on ${saleNumber}`, createdBy: ctx.user.id });
-        await tx.update(sales).set({ loyaltyPointsEarned: money(earned) }).where(eq(sales.id, saleId));
-      }
       const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: calculatedStatus, notes: input.note || "Issued from Odoo-style POS register." }).returning({ id: invoices.id });
       const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The invoice could not be created." });
       if (input.heldOrderId) await tx.update(posOrders).set({ status: "paid", updatedAt: new Date() }).where(eq(posOrders.id, input.heldOrderId));
-      return { saleId, invoiceId, total, paidAmount, paymentStatus: calculatedStatus, lineCount: resolved.length, loyaltyPointsEarned: customer ? Math.floor(Math.max(0, total) * Number(shop?.loyaltyEarnRate || 1) * 1000) / 1000 : 0 };
+      return { saleId, invoiceId, total, paidAmount, paymentStatus: calculatedStatus, lineCount: resolved.length };
     });
-    await audit(ctx.user.id, "POS_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, lineCount: checkout.lineCount, loyaltyPointsEarned: checkout.loyaltyPointsEarned });
+    await audit(ctx.user.id, "POS_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, lineCount: checkout.lineCount });
     return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
   }),
   quickCheckout: protectedProcedure.input(quickCheckoutInput).mutation(async ({ ctx, input }) => {

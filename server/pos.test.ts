@@ -10,8 +10,8 @@ describe("POS checkout totals", () => {
     expect(calculateCheckoutTotal([{ quantity: 1, unitPrice: 12 }], 99)).toEqual({ subtotal: 12, total: 0 });
   });
 
-  it("applies line discounts before order-level and loyalty discounts", () => {
-    expect(calculateCheckoutTotal([{ quantity: 2, unitPrice: 20, lineDiscount: 3 }], 2, 1.5)).toEqual({ subtotal: 40, total: 33.5 });
+  it("applies line discounts before the order-level discount", () => {
+    expect(calculateCheckoutTotal([{ quantity: 2, unitPrice: 20, lineDiscount: 3 }], 2)).toEqual({ subtotal: 40, total: 35 });
   });
 
   it("caps an excessive line discount at its line subtotal", () => {
