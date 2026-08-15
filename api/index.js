@@ -216,6 +216,8 @@ var stockMovementTypeEnum = pgEnum("stock_movement_type", ["opening", "adjustmen
 var serviceCategoryEnum = pgEnum("service_category", ["tailoring", "fabric", "alteration", "accessory", "other"]);
 var paymentMethodEnum = pgEnum("payment_method", ["cash", "benefitpay", "bank_transfer", "credit_card"]);
 var paymentStatusEnum = pgEnum("payment_status", ["paid", "partial", "unpaid"]);
+var invoiceDeliveryChannelEnum = pgEnum("invoice_delivery_channel", ["email", "whatsapp", "share"]);
+var invoiceDeliveryStatusEnum = pgEnum("invoice_delivery_status", ["prepared", "sent", "failed"]);
 var saleSourceEnum = pgEnum("sale_source", ["counter", "manual", "tailoring"]);
 var posSessionStatusEnum = pgEnum("pos_session_status", ["open", "closed"]);
 var posOrderStatusEnum = pgEnum("pos_order_status", ["held", "open", "paid", "cancelled", "refunded"]);
@@ -234,17 +236,18 @@ var tailoringOrders = pgTable("tailoringOrders", { id: serial("id").primaryKey()
 var inventoryItems = pgTable("inventoryItems", { id: serial("id").primaryKey(), code: varchar("code", { length: 60 }).notNull().unique(), name: varchar("name", { length: 160 }).notNull(), category: inventoryCategoryEnum("category").notNull(), color: varchar("color", { length: 60 }), widthInches: decimal("widthInches", { precision: 10, scale: 2 }), unit: varchar("unit", { length: 40 }).notNull().default("Meters"), quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull().default("0"), minThreshold: decimal("minThreshold", { precision: 12, scale: 3 }).notNull().default("0"), costPerUnit: decimal("costPerUnit", { precision: 12, scale: 3 }).notNull().default("0"), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var stockMovements = pgTable("stockMovements", { id: serial("id").primaryKey(), inventoryItemId: integer("inventoryItemId").notNull(), movementType: stockMovementTypeEnum("movementType").notNull(), quantityChange: decimal("quantityChange", { precision: 12, scale: 3 }).notNull(), quantityBefore: decimal("quantityBefore", { precision: 12, scale: 3 }).notNull(), quantityAfter: decimal("quantityAfter", { precision: 12, scale: 3 }).notNull(), referenceType: varchar("referenceType", { length: 40 }), referenceId: integer("referenceId"), notes: text("notes"), createdBy: integer("createdBy"), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var services = pgTable("services", { id: serial("id").primaryKey(), sku: varchar("sku", { length: 60 }).notNull().unique(), name: varchar("name", { length: 160 }).notNull(), category: serviceCategoryEnum("category").notNull(), description: text("description"), unitPrice: decimal("unitPrice", { precision: 12, scale: 3 }).notNull(), inventoryItemId: integer("inventoryItemId"), defaultFabricMeters: decimal("defaultFabricMeters", { precision: 12, scale: 3 }), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
-var sales = pgTable("sales", { id: serial("id").primaryKey(), saleNumber: varchar("saleNumber", { length: 60 }).notNull().unique(), customerId: integer("customerId"), customerNameSnapshot: varchar("customerNameSnapshot", { length: 160 }).notNull(), customerPhoneSnapshot: varchar("customerPhoneSnapshot", { length: 50 }), subtotal: decimal("subtotal", { precision: 12, scale: 3 }).notNull(), discount: decimal("discount", { precision: 12, scale: 3 }).notNull().default("0"), total: decimal("total", { precision: 12, scale: 3 }).notNull(), paidAmount: decimal("paidAmount", { precision: 12, scale: 3 }).notNull().default("0"), paymentMethod: paymentMethodEnum("paymentMethod").notNull(), paymentStatus: paymentStatusEnum("paymentStatus").notNull().default("paid"), source: saleSourceEnum("source").notNull().default("counter"), sessionId: integer("sessionId"), discountCodeId: integer("discountCodeId"), discountCodeSnapshot: varchar("discountCodeSnapshot", { length: 80 }), returnOfSaleId: integer("returnOfSaleId"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+var sales = pgTable("sales", { id: serial("id").primaryKey(), saleNumber: varchar("saleNumber", { length: 60 }).notNull().unique(), clientReference: varchar("clientReference", { length: 120 }).unique(), customerId: integer("customerId"), customerNameSnapshot: varchar("customerNameSnapshot", { length: 160 }).notNull(), customerPhoneSnapshot: varchar("customerPhoneSnapshot", { length: 50 }), subtotal: decimal("subtotal", { precision: 12, scale: 3 }).notNull(), discount: decimal("discount", { precision: 12, scale: 3 }).notNull().default("0"), total: decimal("total", { precision: 12, scale: 3 }).notNull(), paidAmount: decimal("paidAmount", { precision: 12, scale: 3 }).notNull().default("0"), paymentMethod: paymentMethodEnum("paymentMethod").notNull(), paymentStatus: paymentStatusEnum("paymentStatus").notNull().default("paid"), source: saleSourceEnum("source").notNull().default("counter"), sessionId: integer("sessionId"), discountCodeId: integer("discountCodeId"), discountCodeSnapshot: varchar("discountCodeSnapshot", { length: 80 }), returnOfSaleId: integer("returnOfSaleId"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var saleItems = pgTable("saleItems", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull(), serviceId: integer("serviceId"), inventoryItemId: integer("inventoryItemId"), nameSnapshot: varchar("nameSnapshot", { length: 160 }).notNull(), quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(), unitPrice: decimal("unitPrice", { precision: 12, scale: 3 }).notNull(), lineDiscount: decimal("lineDiscount", { precision: 12, scale: 3 }).notNull().default("0"), lineTotal: decimal("total", { precision: 12, scale: 3 }).notNull(), assignedTailorId: integer("assignedTailorId"), measurementProfileId: integer("measurementProfileId") });
 var posSessions = pgTable("posSessions", { id: serial("id").primaryKey(), sessionNumber: varchar("sessionNumber", { length: 60 }).notNull().unique(), status: posSessionStatusEnum("status").notNull().default("open"), openedBy: integer("openedBy").notNull(), openingCash: decimal("openingCash", { precision: 12, scale: 3 }).notNull().default("0"), closingCash: decimal("closingCash", { precision: 12, scale: 3 }), openedAt: timestamp("openedAt").defaultNow().notNull(), closedAt: timestamp("closedAt"), notes: text("notes") });
 var posOrders = pgTable("posOrders", { id: serial("id").primaryKey(), orderNumber: varchar("orderNumber", { length: 60 }).notNull().unique(), sessionId: integer("sessionId"), customerId: integer("customerId"), status: posOrderStatusEnum("status").notNull().default("held"), cartJson: jsonb("cartJson").notNull(), note: text("note"), createdBy: integer("createdBy").notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), heldAt: timestamp("heldAt").defaultNow().notNull() });
 var posPayments = pgTable("posPayments", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull(), method: paymentMethodEnum("method").notNull(), amount: decimal("amount", { precision: 12, scale: 3 }).notNull(), reference: varchar("reference", { length: 160 }), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var discountCodes = pgTable("discountCodes", { id: serial("id").primaryKey(), code: varchar("code", { length: 80 }).notNull().unique(), type: discountTypeEnum("type").notNull(), value: decimal("value", { precision: 12, scale: 3 }).notNull(), maxDiscount: decimal("maxDiscount", { precision: 12, scale: 3 }), minSubtotal: decimal("minSubtotal", { precision: 12, scale: 3 }).notNull().default("0"), usageLimit: integer("usageLimit"), usedCount: integer("usedCount").notNull().default(0), isActive: boolean("isActive").notNull().default(true), expiresAt: timestamp("expiresAt"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var invoices = pgTable("invoices", { id: serial("id").primaryKey(), saleId: integer("saleId").notNull().unique(), invoiceNumber: varchar("invoiceNumber", { length: 60 }).notNull().unique(), status: invoiceStatusEnum("status").notNull(), issuedAt: timestamp("issuedAt").defaultNow().notNull(), dueDate: date("dueDate", { mode: "date" }), notes: text("notes") });
+var invoiceDeliveries = pgTable("invoiceDeliveries", { id: serial("id").primaryKey(), invoiceId: integer("invoiceId").notNull(), channel: invoiceDeliveryChannelEnum("channel").notNull(), recipient: varchar("recipient", { length: 320 }), status: invoiceDeliveryStatusEnum("status").notNull().default("prepared"), message: text("message"), error: text("error"), createdBy: integer("createdBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var staffProfiles = pgTable("staffProfiles", { id: serial("id").primaryKey(), userId: integer("userId"), name: varchar("name", { length: 160 }).notNull(), phone: varchar("phone", { length: 50 }), jobTitle: varchar("jobTitle", { length: 100 }).notNull(), baseSalary: decimal("baseSalary", { precision: 12, scale: 3 }).notNull(), commissionRate: decimal("commissionRate", { precision: 8, scale: 3 }).notNull().default("0"), isActive: boolean("isActive").notNull().default(true), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().notNull() });
 var attendance = pgTable("attendance", { id: serial("id").primaryKey(), staffProfileId: integer("staffProfileId").notNull(), workDate: date("workDate", { mode: "date" }).notNull(), status: attendanceStatusEnum("status").notNull(), notes: text("notes"), recordedBy: integer("recordedBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 var performanceRecords = pgTable("performanceRecords", { id: serial("id").primaryKey(), staffProfileId: integer("staffProfileId").notNull(), workDate: date("workDate", { mode: "date" }).notNull(), metric: varchar("metric", { length: 120 }).notNull(), units: decimal("units", { precision: 12, scale: 3 }).notNull(), commissionEarned: decimal("commissionEarned", { precision: 12, scale: 3 }).notNull().default("0"), notes: text("notes"), recordedBy: integer("recordedBy").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
-var salaryPayouts = pgTable("salaryPayouts", { id: serial("id").primaryKey(), staffProfileId: integer("staffProfileId").notNull(), payPeriod: varchar("payPeriod", { length: 20 }).notNull(), baseSalary: decimal("baseSalary", { precision: 12, scale: 3 }).notNull(), performanceBonus: decimal("performanceBonus", { precision: 12, scale: 3 }).notNull().default("0"), deductions: decimal("deductions", { precision: 12, scale: 3 }).notNull().default("0"), netSalary: decimal("netSalary", { precision: 12, scale: 3 }).notNull(), notes: text("notes"), approvedBy: integer("approvedBy").notNull(), paidAt: timestamp("paidAt").defaultNow().notNull() });
+var salaryPayouts = pgTable("salaryPayouts", { id: serial("id").primaryKey(), staffProfileId: integer("staffProfileId").notNull(), payPeriod: varchar("payPeriod", { length: 20 }).notNull(), payslipNumber: varchar("payslipNumber", { length: 60 }).unique(), baseSalary: decimal("baseSalary", { precision: 12, scale: 3 }).notNull(), allowances: decimal("allowances", { precision: 12, scale: 3 }).notNull().default("0"), overtime: decimal("overtime", { precision: 12, scale: 3 }).notNull().default("0"), performanceBonus: decimal("performanceBonus", { precision: 12, scale: 3 }).notNull().default("0"), deductions: decimal("deductions", { precision: 12, scale: 3 }).notNull().default("0"), deductionDetails: text("deductionDetails"), netSalary: decimal("netSalary", { precision: 12, scale: 3 }).notNull(), notes: text("notes"), approvedBy: integer("approvedBy").notNull(), paidAt: timestamp("paidAt").defaultNow().notNull() });
 var auditLogs = pgTable("auditLogs", { id: serial("id").primaryKey(), actorId: integer("actorId").notNull(), action: varchar("action", { length: 100 }).notNull(), entityType: varchar("entityType", { length: 80 }).notNull(), entityId: integer("entityId"), detailsJson: text("detailsJson"), createdAt: timestamp("createdAt").defaultNow().notNull() });
 
 // server/db.ts
@@ -579,7 +582,17 @@ var erpRouter = router({
     if (!sale) throw new TRPCError3({ code: "NOT_FOUND", message: "Sale for this invoice was not found." });
     const items = await db.select().from(saleItems).where(eq2(saleItems.saleId, sale.id));
     const shop = (await db.select().from(shopSettings).limit(1))[0] || null;
-    return { invoice, sale, items, shop };
+    const deliveries = await db.select().from(invoiceDeliveries).where(eq2(invoiceDeliveries.invoiceId, invoice.id)).orderBy(desc(invoiceDeliveries.createdAt)).limit(20);
+    return { invoice, sale, items, shop, deliveries };
+  }), prepareDelivery: protectedProcedure.input(z2.object({ invoiceId: z2.number().int().positive(), channel: z2.enum(["email", "whatsapp", "share"]), recipient: z2.string().trim().max(320).optional(), message: z2.string().trim().max(2e3).optional() })).mutation(async ({ ctx, input }) => {
+    await access(ctx.user.id, ctx.user.role, salesRoles);
+    const db = await dbOrThrow();
+    const invoice = (await db.select().from(invoices).where(eq2(invoices.id, input.invoiceId)).limit(1))[0];
+    if (!invoice) throw new TRPCError3({ code: "NOT_FOUND", message: "Invoice not found." });
+    const result = await db.insert(invoiceDeliveries).values({ invoiceId: input.invoiceId, channel: input.channel, recipient: input.recipient || null, status: "prepared", message: input.message || null, createdBy: ctx.user.id }).returning({ id: invoiceDeliveries.id });
+    const deliveryId = id(result);
+    await audit(ctx.user.id, "INVOICE_DELIVERY_PREPARED", "invoice", input.invoiceId, { channel: input.channel, recipient: input.recipient });
+    return { id: deliveryId, status: "prepared" };
   }) }),
   staff: router({ list: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, staffDirectoryRoles);
@@ -609,16 +622,36 @@ var erpRouter = router({
   }), payouts: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, payrollRoles);
     return (await dbOrThrow()).select().from(salaryPayouts).orderBy(desc(salaryPayouts.paidAt)).limit(100);
-  }), createPayout: protectedProcedure.input(z2.object({ staffProfileId: z2.number().int().positive(), payPeriod: z2.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a valid pay period."), amount: z2.number().positive("Enter a payout amount greater than zero.").max(1e6), deductions: z2.number().min(0).max(1e6), notes: z2.string().max(2e3) })).mutation(async ({ ctx, input }) => {
+  }), calculate: protectedProcedure.input(z2.object({ staffProfileId: z2.number().int().positive(), payPeriod: z2.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a valid pay period.") })).query(async ({ ctx, input }) => {
     await access(ctx.user.id, ctx.user.role, payrollRoles);
     const db = await dbOrThrow();
     const staff = (await db.select().from(staffProfiles).where(eq2(staffProfiles.id, input.staffProfileId)).limit(1))[0];
     if (!staff) throw new TRPCError3({ code: "NOT_FOUND", message: "Staff profile not found." });
-    const finalAmount = input.amount;
-    const result = await db.insert(salaryPayouts).values({ staffProfileId: staff.id, payPeriod: input.payPeriod, baseSalary: staff.baseSalary, performanceBonus: three(0), deductions: three(input.deductions), netSalary: three(finalAmount), notes: input.notes.trim() || null, approvedBy: ctx.user.id }).returning({ id: salaryPayouts.id });
+    const start = /* @__PURE__ */ new Date(`${input.payPeriod}-01T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+    const rows = await db.select().from(performanceRecords).where(and(eq2(performanceRecords.staffProfileId, staff.id), gte(performanceRecords.workDate, start), lte(performanceRecords.workDate, new Date(end.getTime() - 1))));
+    const performanceBonus = rows.reduce((sum, row) => sum + Number(row.commissionEarned), 0);
+    const baseSalary = Number(staff.baseSalary);
+    return { staffProfileId: staff.id, staffName: staff.name, payPeriod: input.payPeriod, baseSalary, allowances: 0, overtime: 0, performanceBonus, deductions: 0, grossSalary: baseSalary + performanceBonus, netSalary: baseSalary + performanceBonus };
+  }), createPayout: protectedProcedure.input(z2.object({ staffProfileId: z2.number().int().positive(), payPeriod: z2.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a valid pay period."), amount: z2.number().positive().max(1e6).optional(), allowances: z2.number().min(0).max(1e6).default(0), overtime: z2.number().min(0).max(1e6).default(0), performanceBonus: z2.number().min(0).max(1e6).optional(), deductions: z2.number().min(0).max(1e6).default(0), deductionDetails: z2.string().max(2e3).optional(), notes: z2.string().max(2e3) })).mutation(async ({ ctx, input }) => {
+    await access(ctx.user.id, ctx.user.role, payrollRoles);
+    const db = await dbOrThrow();
+    const staff = (await db.select().from(staffProfiles).where(eq2(staffProfiles.id, input.staffProfileId)).limit(1))[0];
+    if (!staff) throw new TRPCError3({ code: "NOT_FOUND", message: "Staff profile not found." });
+    const start = /* @__PURE__ */ new Date(`${input.payPeriod}-01T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+    const rows = await db.select().from(performanceRecords).where(and(eq2(performanceRecords.staffProfileId, staff.id), gte(performanceRecords.workDate, start), lte(performanceRecords.workDate, new Date(end.getTime() - 1))));
+    const performanceBonus = input.performanceBonus ?? rows.reduce((sum, row) => sum + Number(row.commissionEarned), 0);
+    const grossSalary = Number(staff.baseSalary) + input.allowances + input.overtime + performanceBonus;
+    const finalAmount = input.amount ?? grossSalary - input.deductions;
+    if (finalAmount <= 0) throw new TRPCError3({ code: "BAD_REQUEST", message: "The calculated net salary must be greater than zero." });
+    const payslipNumber = `PS-${input.payPeriod.replace("-", "")}-${staff.id}-${Date.now()}`;
+    const result = await db.insert(salaryPayouts).values({ staffProfileId: staff.id, payPeriod: input.payPeriod, payslipNumber, baseSalary: staff.baseSalary, allowances: three(input.allowances), overtime: three(input.overtime), performanceBonus: three(performanceBonus), deductions: three(input.deductions), deductionDetails: input.deductionDetails?.trim() || null, netSalary: three(finalAmount), notes: input.notes.trim() || null, approvedBy: ctx.user.id }).returning({ id: salaryPayouts.id });
     const payoutId = id(result);
-    await audit(ctx.user.id, "SALARY_PAYOUT_CREATED", "salaryPayout", payoutId, { staffProfileId: staff.id, payPeriod: input.payPeriod, finalAmount: three(finalAmount), deductions: three(input.deductions) });
-    return { id: payoutId, netSalary: finalAmount };
+    await audit(ctx.user.id, "SALARY_PAYOUT_CREATED", "salaryPayout", payoutId, { staffProfileId: staff.id, payPeriod: input.payPeriod, finalAmount: three(finalAmount), deductions: three(input.deductions), payslipNumber });
+    return { id: payoutId, netSalary: finalAmount, payslipNumber };
   }) }),
   tailoring: router({ list: protectedProcedure.query(async ({ ctx }) => {
     await access(ctx.user.id, ctx.user.role, tailoringRoles);
@@ -908,8 +941,15 @@ async function audit2(userId, action, entityType, entityId, details) {
   const db = await dbOrThrow2();
   await db.insert(auditLogs).values({ actorId: userId, action, entityType, entityId, detailsJson: JSON.stringify(details) });
 }
+async function existingCheckoutByReference(clientReference) {
+  if (!clientReference) return null;
+  const db = await dbOrThrow2();
+  const existing = (await db.select({ saleId: sales.id, invoiceId: invoices.id, saleNumber: sales.saleNumber, total: sales.total, paidAmount: sales.paidAmount, paymentStatus: sales.paymentStatus }).from(sales).innerJoin(invoices, eq3(invoices.saleId, sales.id)).where(eq3(sales.clientReference, clientReference)).limit(1))[0];
+  return existing ? { id: existing.saleId, invoiceId: existing.invoiceId, total: Number(existing.total), paidAmount: Number(existing.paidAmount), paymentStatus: existing.paymentStatus, saleNumber: existing.saleNumber } : null;
+}
 var sessionInput = z3.object({ openingCash: z3.number().min(0).max(1e6), notes: z3.string().trim().max(2e3).optional() });
 var checkoutInput = z3.object({
+  clientReference: z3.string().trim().max(120).optional(),
   sessionId: z3.number().int().positive(),
   heldOrderId: z3.number().int().positive().optional(),
   customerId: z3.number().int().positive().optional(),
@@ -926,6 +966,7 @@ var checkoutInput = z3.object({
   for (const item of value.items) if (item.lineDiscount > item.quantity * item.unitPrice) ctx.addIssue({ code: "custom", path: ["items"], message: `The discount for ${item.name} cannot exceed its line subtotal.` });
 });
 var quickCheckoutInput = z3.object({
+  clientReference: z3.string().trim().max(120).optional(),
   sessionId: z3.number().int().positive(),
   customerId: z3.number().int().positive().optional(),
   customerName: z3.string().min(1).max(160).default("Walk-in customer"),
@@ -1039,6 +1080,8 @@ var posRouter = router({
   }),
   checkout: protectedProcedure.input(checkoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
+    const replay = await existingCheckoutByReference(input.clientReference);
+    if (replay) return replay;
     const db = await dbOrThrow2();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
@@ -1072,7 +1115,7 @@ var posRouter = router({
       const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
       if (paidAmount > total + 1e-3) throw new TRPCError4({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
       const calculatedStatus = paidAmount >= total - 1e-3 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, clientReference: input.clientReference || null, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
@@ -1099,6 +1142,8 @@ var posRouter = router({
   }),
   quickCheckout: protectedProcedure.input(quickCheckoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
+    const replay = await existingCheckoutByReference(input.clientReference);
+    if (replay) return replay;
     const db = await dbOrThrow2();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
@@ -1108,6 +1153,7 @@ var posRouter = router({
       if (input.customerId && !customer) throw new TRPCError4({ code: "NOT_FOUND", message: "The selected customer was not found." });
       const saleResult = await tx.insert(sales).values({
         saleNumber,
+        clientReference: input.clientReference || null,
         customerId: customer?.id || null,
         customerNameSnapshot: customer?.name || input.customerName,
         customerPhoneSnapshot: customer?.phone || input.customerPhone || null,

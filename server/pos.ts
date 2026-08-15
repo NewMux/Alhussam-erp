@@ -54,8 +54,16 @@ async function audit(userId: number, action: string, entityType: string, entityI
   await db.insert(auditLogs).values({ actorId: userId, action, entityType, entityId, detailsJson: JSON.stringify(details) });
 }
 
+async function existingCheckoutByReference(clientReference: string | undefined) {
+  if (!clientReference) return null;
+  const db = await dbOrThrow();
+  const existing = (await db.select({ saleId: sales.id, invoiceId: invoices.id, saleNumber: sales.saleNumber, total: sales.total, paidAmount: sales.paidAmount, paymentStatus: sales.paymentStatus }).from(sales).innerJoin(invoices, eq(invoices.saleId, sales.id)).where(eq(sales.clientReference, clientReference)).limit(1))[0];
+  return existing ? { id: existing.saleId, invoiceId: existing.invoiceId, total: Number(existing.total), paidAmount: Number(existing.paidAmount), paymentStatus: existing.paymentStatus, saleNumber: existing.saleNumber } : null;
+}
+
 const sessionInput = z.object({ openingCash: z.number().min(0).max(1000000), notes: z.string().trim().max(2000).optional() });
 const checkoutInput = z.object({
+  clientReference: z.string().trim().max(120).optional(),
   sessionId: z.number().int().positive(),
   heldOrderId: z.number().int().positive().optional(),
   customerId: z.number().int().positive().optional(),
@@ -73,6 +81,7 @@ const checkoutInput = z.object({
 });
 
 const quickCheckoutInput = z.object({
+  clientReference: z.string().trim().max(120).optional(),
   sessionId: z.number().int().positive(),
   customerId: z.number().int().positive().optional(),
   customerName: z.string().min(1).max(160).default("Walk-in customer"),
@@ -192,6 +201,8 @@ export const posRouter = router({
   }),
   checkout: protectedProcedure.input(checkoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
+    const replay = await existingCheckoutByReference(input.clientReference);
+    if (replay) return replay;
     const db = await dbOrThrow();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
@@ -225,7 +236,7 @@ export const posRouter = router({
       const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
       if (paidAmount > total + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
       const calculatedStatus = paidAmount >= total - 0.001 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, clientReference: input.clientReference || null, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
@@ -252,6 +263,8 @@ export const posRouter = router({
   }),
   quickCheckout: protectedProcedure.input(quickCheckoutInput).mutation(async ({ ctx, input }) => {
     await requireCounterAccess(ctx.user.id, ctx.user.role);
+    const replay = await existingCheckoutByReference(input.clientReference);
+    if (replay) return replay;
     const db = await dbOrThrow();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
@@ -261,6 +274,7 @@ export const posRouter = router({
       if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
       const saleResult = await tx.insert(sales).values({
         saleNumber,
+        clientReference: input.clientReference || null,
         customerId: customer?.id || null,
         customerNameSnapshot: customer?.name || input.customerName,
         customerPhoneSnapshot: customer?.phone || input.customerPhone || null,
