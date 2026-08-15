@@ -63,7 +63,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="min-w-0"><p className="truncate text-sm font-semibold">{clientBrand.name}</p><p className="truncate text-xs text-muted-foreground">{currentPage?.label || "Tailor ERP"}</p></div>
         </div>
         <p className="ml-auto hidden text-sm text-muted-foreground lg:block">Secure business workspace</p>
-        <Button variant="ghost" size="icon" className="ml-auto h-11 w-11 rounded-xl lg:hidden" onClick={() => setMoreOpen(true)} aria-label="Open more navigation"><MoreHorizontal className="h-5 w-5" /></Button>
+        <div className="ml-auto flex items-center gap-2 lg:hidden">
+          <Link href="/team" aria-label="Open Staff & Payroll" className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${isActive("/team") ? "border-primary bg-primary text-primary-foreground" : "bg-white text-foreground"}`}>
+            <Users className="h-4 w-4" />
+            <span className="hidden min-[380px]:inline">Team</span>
+          </Link>
+          <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl" onClick={() => setMoreOpen(true)} aria-label="Open more navigation"><MoreHorizontal className="h-5 w-5" /></Button>
+        </div>
       </div>
     </header>
 
