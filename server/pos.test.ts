@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateCheckoutTotal } from "./pos";
+import { calculateCheckoutTotal, returnItemSelection } from "./pos";
 
 describe("POS checkout totals", () => {
   it("calculates a multi-line checkout after a fixed discount", () => {
@@ -16,5 +16,13 @@ describe("POS checkout totals", () => {
 
   it("caps an excessive line discount at its line subtotal", () => {
     expect(calculateCheckoutTotal([{ quantity: 1, unitPrice: 8, lineDiscount: 20 }], 0)).toEqual({ subtotal: 8, total: 0 });
+  });
+
+  it("accepts one selected return item", () => {
+    expect(returnItemSelection.safeParse([{ saleItemId: 42, quantity: 1 }]).success).toBe(true);
+  });
+
+  it("rejects a return payload containing multiple selected items", () => {
+    expect(returnItemSelection.safeParse([{ saleItemId: 42, quantity: 1 }, { saleItemId: 43, quantity: 1 }]).success).toBe(false);
   });
 });

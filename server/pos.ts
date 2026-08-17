@@ -120,6 +120,8 @@ const heldOrderInput = z.object({
   items: z.array(cartItem).min(1),
 });
 
+export const returnItemSelection = z.array(z.object({ saleItemId: z.number().int().positive(), quantity: z.number().positive() })).max(1, "Choose only one item to return.");
+
 const returnInput = z.object({
   sessionId: z.number().int().positive(),
   originalSaleId: z.number().int().positive(),
@@ -128,7 +130,7 @@ const returnInput = z.object({
   amount: z.number().positive().max(1000000).optional(),
   reason: z.string().trim().max(2000).optional(),
   note: z.string().trim().max(2000).optional(),
-  items: z.array(z.object({ saleItemId: z.number().int().positive(), quantity: z.number().positive() })).optional(),
+  items: returnItemSelection.optional(),
 }).superRefine((value, ctx) => {
   if (value.mode === "items" && (!value.items || value.items.length === 0)) ctx.addIssue({ code: "custom", path: ["items"], message: "Choose at least one item to return." });
   if (value.mode === "amount" && (!value.amount || value.amount <= 0)) ctx.addIssue({ code: "custom", path: ["amount"], message: "Enter a refund amount." });
