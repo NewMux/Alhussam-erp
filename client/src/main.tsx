@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { pb } from "@/lib/pocketbase";
 import { trpc } from "@/lib/trpc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -36,9 +36,7 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       async headers() {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        return token ? { Authorization: `Bearer ${token}` } : {};
+        return pb.authStore.isValid ? { Authorization: `Bearer ${pb.authStore.token}` } : {};
       },
     }),
   ],

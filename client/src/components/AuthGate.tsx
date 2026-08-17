@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { pb } from "@/lib/pocketbase";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Loader2, Scissors } from "lucide-react";
 import { useState } from "react";
@@ -24,20 +24,18 @@ export default function AuthGate() {
 
     try {
       if (mode === "login") {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInError) throw signInError;
+        await pb.collection("users").authWithPassword(email, password);
       } else {
-        const { data, error: signUpError } = await supabase.auth.signUp({
+        await pb.collection("users").create({
           email,
           password,
-          options: { data: { name } },
+          passwordConfirm: password,
+          name,
+          role: "user",
+          loginMethod: "pocketbase",
+          lastSignedIn: new Date().toISOString(),
         });
-        if (signUpError) throw signUpError;
-        if (!data.session) {
-          // Email confirmation is required before the account can sign in.
-          setNotice("Check your email to confirm your account, then sign in below.");
-          setMode("login");
-        }
+        await pb.collection("users").authWithPassword(email, password);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");

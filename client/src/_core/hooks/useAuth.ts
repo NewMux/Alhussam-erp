@@ -1,8 +1,8 @@
-import { supabase } from "@/lib/supabase";
+import { pb } from "@/lib/pocketbase";
 import { trpc } from "@/lib/trpc";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type CachedUser = { id: number; name: string | null; email: string | null; role: "user" | "admin" };
+type CachedUser = { id: string; name: string | null; email: string | null; role: "user" | "admin" };
 const CACHED_USER_KEY = "al-hussam-erp-last-user";
 
 function readCachedUser(): CachedUser | null {
@@ -11,7 +11,7 @@ function readCachedUser(): CachedUser | null {
     const raw = window.localStorage.getItem(CACHED_USER_KEY);
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<CachedUser>;
-    if (typeof value.id !== "number" || (value.role !== "user" && value.role !== "admin")) return null;
+    if (typeof value.id !== "string" || (value.role !== "user" && value.role !== "admin")) return null;
     return { id: value.id, name: typeof value.name === "string" ? value.name : null, email: typeof value.email === "string" ? value.email : null, role: value.role };
   } catch {
     return null;
@@ -21,11 +21,9 @@ function readCachedUser(): CachedUser | null {
 export function useAuth() {
   const utils = trpc.useUtils();
   const [loggingOut, setLoggingOut] = useState(false);
-  const [hasSession, setHasSession] = useState<boolean | null>(null);
+  const [hasSession, setHasSession] = useState<boolean | null>(pb.authStore.isValid);
   const [cachedUser, setCachedUser] = useState<CachedUser | null>(() => readCachedUser());
 
-  // Do not request the ERP profile until Supabase has restored local session
-  // storage. Otherwise the initial auth.me request can be cached as anonymous.
   const meQuery = trpc.auth.me.useQuery(undefined, {
     enabled: hasSession === true,
     retry: false,
@@ -33,15 +31,10 @@ export function useAuth() {
   });
 
   useEffect(() => {
-    let active = true;
-
-    void supabase.auth.getSession().then(({ data }) => {
-      if (active) setHasSession(Boolean(data.session));
-    });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      setHasSession(Boolean(session));
-      if (session) {
+    const unsubscribe = pb.authStore.onChange((_token, model) => {
+      const authed = Boolean(model);
+      setHasSession(authed);
+      if (authed) {
         void utils.auth.me.invalidate();
       } else {
         setCachedUser(null);
@@ -50,10 +43,7 @@ export function useAuth() {
       }
     });
 
-    return () => {
-      active = false;
-      subscription.subscription.unsubscribe();
-    };
+    return () => unsubscribe();
   }, [utils]);
 
   useEffect(() => {
@@ -66,7 +56,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     setLoggingOut(true);
     try {
-      await supabase.auth.signOut();
+      pb.authStore.clear();
       setHasSession(false);
       setCachedUser(null);
       try { window.localStorage.removeItem(CACHED_USER_KEY); } catch { /* Ignore storage failures during logout. */ }

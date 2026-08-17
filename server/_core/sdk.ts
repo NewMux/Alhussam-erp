@@ -1,51 +1,14 @@
 import { ForbiddenError } from "@shared/_core/errors";
+import type { User } from "@shared/pb-types";
 import type { Request } from "express";
-import type { User } from "../../drizzle/schema";
-import * as db from "../db";
+import { getPb, syncAppUser } from "../pb";
 import { ENV } from "./env";
-
-type SupabaseAuthUser = {
-  id: string;
-  email?: string | null;
-  user_metadata?: {
-    name?: unknown;
-    full_name?: unknown;
-  } | null;
-};
-
-async function getSupabaseUser(accessToken: string): Promise<SupabaseAuthUser> {
-  if (!ENV.supabaseAnonKey) {
-    throw ForbiddenError("Server authentication is not configured");
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${ENV.supabaseUrl}/auth/v1/user`, {
-      headers: {
-        apikey: ENV.supabaseAnonKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-  } catch {
-    throw ForbiddenError("Session verification unavailable");
-  }
-
-  if (!response.ok) {
-    throw ForbiddenError("Invalid session");
-  }
-
-  const data = (await response.json()) as SupabaseAuthUser;
-  if (!data?.id) {
-    throw ForbiddenError("Invalid session");
-  }
-  return data;
-}
 
 class SDKServer {
   /**
-   * Verifies the Supabase access token sent as `Authorization: Bearer <token>`
-   * against the Supabase Auth user endpoint, then syncs it to the app-level
-   * `users` row (role/pending-approval gating lives there, not in Supabase).
+   * Verifies the PocketBase auth token sent as `Authorization: <token>`
+   * against PocketBase's own auth-refresh endpoint, then syncs the
+   * OWNER_EMAIL/pending-approval gate onto the record (see syncAppUser).
    */
   async authenticateRequest(req: Request): Promise<User> {
     const authHeader = req.headers.authorization;
@@ -56,29 +19,30 @@ class SDKServer {
     if (!token) {
       throw ForbiddenError("Missing session");
     }
-
-    const authUser = await getSupabaseUser(token);
-    const metadata = authUser.user_metadata;
-    const name =
-      (typeof metadata?.name === "string" && metadata.name) ||
-      (typeof metadata?.full_name === "string" && metadata.full_name) ||
-      authUser.email ||
-      "";
-
-    await db.upsertUser({
-      openId: authUser.id,
-      name,
-      email: authUser.email ?? null,
-      loginMethod: "supabase",
-      lastSignedIn: new Date(),
-    });
-
-    const user = await db.getUserByOpenId(authUser.id);
-    if (!user) {
-      throw ForbiddenError("User not found");
+    if (!ENV.pocketbaseUrl) {
+      throw ForbiddenError("Server authentication is not configured");
     }
 
-    return user;
+    let response: Response;
+    try {
+      response = await fetch(`${ENV.pocketbaseUrl}/api/collections/users/auth-refresh`, {
+        method: "POST",
+        headers: { Authorization: token },
+      });
+    } catch {
+      throw ForbiddenError("Session verification unavailable");
+    }
+    if (!response.ok) {
+      throw ForbiddenError("Invalid session");
+    }
+
+    const data = (await response.json()) as { record?: User };
+    if (!data?.record?.id) {
+      throw ForbiddenError("Invalid session");
+    }
+
+    await getPb();
+    return syncAppUser(data.record);
   }
 }
 

@@ -1,0 +1,13 @@
+# Runs backup-pocketbase.sh for one client. Triggered by the matching .timer
+# unit — not meant to be started directly except for testing:
+#   systemctl start pocketbase-backup@<client>
+
+[Unit]
+Description=PocketBase backup (%i)
+After=pocketbase@%i.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pocketbase/backup-pocketbase.sh %i
+User=pocketbase
+Group=pocketbase

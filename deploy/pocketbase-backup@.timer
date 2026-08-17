@@ -1,0 +1,15 @@
+# Install + enable per client:
+#   sudo cp pocketbase-backup@.service pocketbase-backup@.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pocketbase-backup@<client>.timer
+
+[Unit]
+Description=Nightly PocketBase backup (%i)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

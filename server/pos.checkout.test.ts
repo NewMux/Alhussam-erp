@@ -1,150 +1,91 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { User } from "@shared/pb-types";
+import { isPocketbaseTestBinaryAvailable, startTestPocketBase, useTestPocketBaseEnv, type TestPocketBase } from "./test/pocketbaseHarness";
 
-const mocked = vi.hoisted(() => ({ getDb: vi.fn() }));
-vi.mock("./db", () => ({ getDb: mocked.getDb }));
+// Real PocketBase integration test (not a Drizzle mock) — see server/test/pocketbaseHarness.ts.
+describe.skipIf(!isPocketbaseTestBinaryAvailable())("pos.checkout", () => {
+  let instance: TestPocketBase;
+  let posRouter: typeof import("./pos").posRouter;
+  let actor: User;
 
-import { posRouter } from "./pos";
+  beforeAll(async () => {
+    instance = await startTestPocketBase();
+    useTestPocketBaseEnv(instance);
+    ({ posRouter } = await import("./pos"));
+    actor = await instance.pb.collection("users").create<User>({ email: "cashier@example.com", password: "CashierPass123!", passwordConfirm: "CashierPass123!", name: "Cashier", role: "admin", loginMethod: "test", lastSignedIn: new Date().toISOString() });
+    await instance.pb.collection("userBusinessRoles").create({ userId: actor.id, role: "admin", isActive: true });
+    await instance.pb.collection("shopSettings").create({ shopName: "Test Shop", currency: "BHD", invoicePrefix: "POS" });
+  }, 60000);
 
-const query = (rows: unknown[]) => ({
-  from: () => ({
-    where: () => ({ orderBy: () => ({ limit: () => rows }), limit: () => rows }),
-    orderBy: () => ({ limit: () => rows }),
-    limit: () => rows,
-    innerJoin: () => ({ where: () => ({ limit: () => rows }) }),
-  }),
-});
+  afterAll(async () => { await instance?.stop(); });
 
-describe("pos.checkout", () => {
-  beforeEach(() => vi.clearAllMocks());
+  function makeContext() {
+    return { user: actor, req: { headers: {} }, res: {} } as never;
+  }
+  const openSession = () => instance.pb.collection("posSessions").create({ sessionNumber: `POS-${crypto.randomUUID()}`, status: "open", openedBy: actor.id, openingCash: 0, openedAt: new Date().toISOString() });
 
   it("persists the live-mapped line, linked stock update, and invoice within the sale transaction", async () => {
-    const writes: unknown[] = [];
-    const stockUpdates: unknown[] = [];
-    const transactionSelectRows = [[{ id: 1, status: "open" }], [{ id: 4, name: "Navy cotton", inventoryItemId: 81, defaultFabricMeters: "2.000", unitPrice: "45.000", isActive: true }], [{ id: 81, name: "Navy cotton", quantity: "4.000", unit: "Meters", isActive: true }]];
-    const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 701 : 1 }] }; }) })),
-      select: vi.fn(() => query(transactionSelectRows.shift() || [])),
-      update: vi.fn(() => ({ set: vi.fn((value: unknown) => { stockUpdates.push(value); return { where: vi.fn() }; }) })),
-    };
-    const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [{ invoicePrefix: "POS" }]];
-    const rootDb = {
-      select: vi.fn(() => query(rootResponses.shift() || [])),
-      insert: vi.fn(() => ({ values: vi.fn() })),
-      transaction: vi.fn(async (callback: (tx: typeof transactionDb) => Promise<unknown>) => callback(transactionDb)),
-    };
-    mocked.getDb.mockResolvedValue(rootDb);
-    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
+    const session = await openSession();
+    const inventoryItem = await instance.pb.collection("inventoryItems").create({ code: `FAB-${crypto.randomUUID()}`, name: "Navy cotton", category: "fabric", unit: "Meters", quantity: 4, minThreshold: 0, costPerUnit: 5, isActive: true });
+    const service = await instance.pb.collection("services").create({ sku: `SKU-${crypto.randomUUID()}`, name: "Navy cotton", category: "fabric", unitPrice: 45, inventoryItemId: inventoryItem.id, defaultFabricMeters: 2, isActive: true });
+    const caller = posRouter.createCaller(makeContext());
 
-    const result = await caller.checkout({
-      sessionId: 1,
-      customerName: "Counter client",
-      customerPhone: "+973 3000 1000",
-      discount: 0,
-      paymentMethod: "benefitpay",
-      paymentStatus: "paid",
-      items: [{ serviceId: 4, inventoryItemId: 81, name: "Navy cotton", quantity: 1, unitPrice: 45 }],
-    });
+    const result = await caller.checkout({ sessionId: session.id, customerName: "Counter client", customerPhone: "+973 3000 1000", discount: 0, paymentMethod: "benefitpay", paymentStatus: "paid", items: [{ serviceId: service.id, inventoryItemId: inventoryItem.id, name: "Navy cotton", quantity: 1, unitPrice: 45 }] });
 
-    expect(result).toMatchObject({ id: 701, invoiceId: 1, total: 45 });
-    expect(writes).toHaveLength(5);
-    expect(writes[1]).toMatchObject({ saleId: 701, serviceId: 4, inventoryItemId: 81, lineTotal: "45.000", assignedTailorId: null, measurementProfileId: null });
-    expect(stockUpdates).toEqual([{ quantity: "2.000" }]);
-    expect(writes[2]).toMatchObject({ inventoryItemId: 81, movementType: "sale", referenceId: 701, quantityChange: "-2.000", quantityAfter: "2.000" });
-    expect(writes[3]).toMatchObject({ saleId: 701, method: "benefitpay", amount: "45.000" });
-    expect(writes[4]).toMatchObject({ saleId: 701, invoiceNumber: "POS-000701", status: "paid" });
+    expect(result.total).toBe(45);
+    const items = await instance.pb.collection("saleItems").getFullList({ filter: `saleId = "${result.id}"` });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ inventoryItemId: inventoryItem.id, lineTotal: 45 });
+    const stock = await instance.pb.collection("inventoryItems").getOne(inventoryItem.id);
+    expect(stock.quantity).toBe(2); // 4 on hand - (1 sold * 2 meters/unit)
+    const movements = await instance.pb.collection("stockMovements").getFullList({ filter: `inventoryItemId = "${inventoryItem.id}"` });
+    expect(movements).toHaveLength(1);
+    expect(movements[0]).toMatchObject({ movementType: "sale", quantityChange: -2, quantityAfter: 2 });
+    const invoice = await instance.pb.collection("invoices").getFirstListItem(`saleId = "${result.id}"`);
+    expect(invoice.status).toBe("paid");
   });
 
   it("attaches a replayed checkout without a client session to the resolved open POS session", async () => {
-    const writes: unknown[] = [];
-    const transactionSelectRows = [[{ id: 77, status: "open" }], [{ id: 4, name: "Navy cotton", inventoryItemId: null, defaultFabricMeters: null, unitPrice: "45.000", isActive: true }]];
-    const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 703 : 3 }] }; }) })),
-      select: vi.fn(() => query(transactionSelectRows.shift() || [])),
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn() })) })),
-    };
-    const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [], [{ invoicePrefix: "POS" }]];
-    const rootDb = {
-      select: vi.fn(() => query(rootResponses.shift() || [])),
-      insert: vi.fn(() => ({ values: vi.fn() })),
-      transaction: vi.fn(async (callback: (tx: typeof transactionDb) => Promise<unknown>) => callback(transactionDb)),
-    };
-    mocked.getDb.mockResolvedValue(rootDb);
-    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
+    const session = await openSession();
+    const service = await instance.pb.collection("services").create({ sku: `SKU-${crypto.randomUUID()}`, name: "Navy cotton", category: "fabric", unitPrice: 45, isActive: true });
+    const caller = posRouter.createCaller(makeContext());
 
-    await caller.checkout({ clientReference: "offline-session-test", customerName: "Offline client", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [{ serviceId: 4, name: "Navy cotton", quantity: 1, unitPrice: 45 }] });
+    const result = await caller.checkout({ clientReference: `offline-${crypto.randomUUID()}`, customerName: "Offline client", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [{ serviceId: service.id, name: "Navy cotton", quantity: 1, unitPrice: 45 }] });
 
-    expect(writes[0]).toMatchObject({ clientReference: "offline-session-test", sessionId: 77 });
+    const sale = await instance.pb.collection("sales").getOne(result.id);
+    expect(sale.sessionId).toBe(session.id);
   });
 
   it("sells a live inventory material directly without a catalog service dependency", async () => {
-    const writes: unknown[] = [];
-    const stockUpdates: unknown[] = [];
-    const transactionSelectRows = [[{ id: 1, status: "open" }], [{ id: 30001, name: "Navy Premium Cotton", quantity: "16.000", unit: "Meters", costPerUnit: "7.500", isActive: true }]];
-    const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 702 : 2 }] }; }) })),
-      select: vi.fn(() => query(transactionSelectRows.shift() || [])),
-      update: vi.fn(() => ({ set: vi.fn((value: unknown) => { stockUpdates.push(value); return { where: vi.fn() }; }) })),
-    };
-    const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [{ invoicePrefix: "POS" }]];
-    const rootDb = { select: vi.fn(() => query(rootResponses.shift() || [])), insert: vi.fn(() => ({ values: vi.fn() })), transaction: vi.fn(async (callback: (tx: typeof transactionDb) => Promise<unknown>) => callback(transactionDb)) };
-    mocked.getDb.mockResolvedValue(rootDb);
-    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
+    const session = await openSession();
+    const inventoryItem = await instance.pb.collection("inventoryItems").create({ code: `FAB-${crypto.randomUUID()}`, name: "Navy Premium Cotton", category: "fabric", unit: "Meters", quantity: 16, minThreshold: 0, costPerUnit: 7.5, isActive: true });
+    const caller = posRouter.createCaller(makeContext());
 
-    const result = await caller.checkout({ sessionId: 1, customerName: "Walk-in customer", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [{ inventoryItemId: 30001, name: "Navy Premium Cotton", quantity: 2, unitPrice: 9 }] });
+    const result = await caller.checkout({ sessionId: session.id, customerName: "Walk-in customer", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [{ inventoryItemId: inventoryItem.id, name: "Navy Premium Cotton", quantity: 2, unitPrice: 9 }] });
 
-    expect(result).toMatchObject({ id: 702, invoiceId: 2, total: 18 });
-    expect(writes[1]).toMatchObject({ saleId: 702, serviceId: null, inventoryItemId: 30001, nameSnapshot: "Navy Premium Cotton", unitPrice: "9.000", lineTotal: "18.000" });
-    expect(stockUpdates).toEqual([{ quantity: "14.000" }]);
-    expect(writes[2]).toMatchObject({ inventoryItemId: 30001, movementType: "sale", quantityChange: "-2.000", quantityAfter: "14.000" });
+    expect(result.total).toBe(18);
+    const stock = await instance.pb.collection("inventoryItems").getOne(inventoryItem.id);
+    expect(stock.quantity).toBe(14);
   });
 
   it("creates a confirmed tailoring order, deposit sale, linked sale line, and invoice atomically from POS", async () => {
-    const writes: unknown[] = [];
-    const transactionResponses = [
-      [{ id: 1, status: "open" }],
-      [{ id: 44, name: "[DEMO] Ahmed Al-Hassan", phone: "+973 3330 0011" }],
-      [{ id: 9, customerId: 44, version: 1 }],
-      [{ id: 7, name: "[DEMO] Khalid Tailor", isActive: true }],
-    ];
-    const transactionDb = {
-      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); const insertIds = [811, 712, 900, 901, 43]; return { returning: () => [{ id: insertIds[writes.length - 1] }] }; }) })),
-      select: vi.fn(() => query(transactionResponses.shift() || [])),
-    };
-    const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [{ invoicePrefix: "POS" }]];
-    const rootDb = {
-      select: vi.fn(() => query(rootResponses.shift() || [])),
-      insert: vi.fn(() => ({ values: vi.fn() })),
-      transaction: vi.fn(async (callback: (tx: typeof transactionDb) => Promise<unknown>) => callback(transactionDb)),
-    };
-    mocked.getDb.mockResolvedValue(rootDb);
-    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
+    const session = await openSession();
+    const customer = await instance.pb.collection("customers").create({ name: "Ahmed", phone: "+973 3330 0011", preferredContact: "Phone" });
+    const measurement = await instance.pb.collection("measurementProfiles").create({ customerId: customer.id, version: 1, measurementsJson: { neck: "15" }, effectiveDate: new Date().toISOString(), createdBy: actor.id });
+    const tailor = await instance.pb.collection("staffProfiles").create({ name: "Khalid", jobTitle: "Tailor", baseSalary: 0, commissionRate: 0, isActive: true });
+    const caller = posRouter.createCaller(makeContext());
 
-    const result = await caller.tailoringCheckout({
-      sessionId: 1,
-      customerId: 44,
-      measurementProfileId: 9,
-      assignedTailorId: 7,
-      garmentType: "Thoub",
-      quantity: 1,
-      dueDate: "2026-09-01",
-      orderPrice: 45,
-      paymentAmount: 20,
-      paymentMethod: "benefitpay",
-      notes: "[DEMO] Counter thoub order",
-      productionNotes: "[DEMO] Begin after fabric selection.",
-    });
+    const result = await caller.tailoringCheckout({ sessionId: session.id, customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "2026-09-01", orderPrice: 45, paymentAmount: 20, paymentMethod: "benefitpay", notes: "Counter thoub order", productionNotes: "Begin after fabric selection." });
 
-    expect(result).toMatchObject({ orderId: 811, saleId: 712, invoiceId: 43, total: 20, paymentStatus: "partial" });
-    expect(writes).toHaveLength(5);
-    expect(writes[0]).toMatchObject({ customerId: 44, measurementProfileId: 9, assignedTailorId: 7, garmentType: "Thoub", status: "confirmed", price: "45.000" });
-    expect(writes[1]).toMatchObject({ customerId: 44, subtotal: "20.000", total: "20.000", paymentStatus: "partial" });
-    expect(writes[2]).toMatchObject({ saleId: 712, method: "benefitpay", amount: "20.000" });
-    expect(writes[3]).toMatchObject({ saleId: 712, serviceId: null, inventoryItemId: null, assignedTailorId: 7, measurementProfileId: 9, lineTotal: "20.000" });
-    expect(writes[4]).toMatchObject({ saleId: 712, invoiceNumber: "POS-000712", status: "partial" });
+    expect(result).toMatchObject({ total: 20, paymentStatus: "partial" });
+    const order = await instance.pb.collection("tailoringOrders").getOne(result.orderId);
+    expect(order).toMatchObject({ customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, status: "confirmed" });
+    const sale = await instance.pb.collection("sales").getOne(result.saleId);
+    expect(sale).toMatchObject({ total: 20, paymentStatus: "partial" });
   });
 
   it("rejects a tailoring payment that exceeds the quoted order price before creating records", async () => {
-    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
-    await expect(caller.tailoringCheckout({ sessionId: 1, customerId: 1, measurementProfileId: 1, assignedTailorId: 1, garmentType: "Thoub", quantity: 1, orderPrice: 45, paymentAmount: 46, paymentMethod: "cash", notes: "", productionNotes: "" })).rejects.toThrow("The payment collected cannot exceed the quoted order price.");
+    const caller = posRouter.createCaller(makeContext());
+    await expect(caller.tailoringCheckout({ sessionId: "irrelevant", customerId: "irrelevant", measurementProfileId: "irrelevant", assignedTailorId: "irrelevant", garmentType: "Thoub", quantity: 1, orderPrice: 45, paymentAmount: 46, paymentMethod: "cash", notes: "", productionNotes: "" })).rejects.toThrow("The payment collected cannot exceed the quoted order price.");
   });
 });

@@ -31,7 +31,7 @@ The point of sale is intentionally aligned to the active inventory records. It p
 
 ## Hosting requirements
 
-The app is a React/Vite frontend with an Express/tRPC backend (Drizzle ORM) plus a **Supabase** project (Postgres database + authentication). It's deployed on **Vercel**: the frontend builds to static assets, and the backend runs as a single Vercel serverless function (`api/index.ts`, which wraps the same Express app used for local development — see `vercel.json` for the routing). Local/alternate-host development still uses:
+The app is a React/Vite frontend with an Express/tRPC backend, backed by a **PocketBase** instance (SQLite database + authentication) running on a self-managed VPS — see `deploy/README.md` for full VPS provisioning, per-client onboarding, and backup setup. The frontend and API layer still deploy to **Vercel**: the frontend builds to static assets, and the backend runs as a single Vercel serverless function (`api/index.ts`, which wraps the same Express app used for local development — see `vercel.json` for the routing). Local/alternate-host development still uses:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -39,27 +39,27 @@ pnpm build
 pnpm start
 ```
 
-Authentication is handled by **Supabase Auth** (email/password) — the browser talks to Supabase directly via `@supabase/supabase-js`, and the server verifies the resulting access token by calling Supabase's own `/auth/v1/user` endpoint (no separate JWT secret to manage).
+Authentication is handled by **PocketBase's built-in auth** (email/password) — the browser talks to PocketBase directly via the `pocketbase` JS SDK, and the server verifies the resulting token by calling PocketBase's own auth-refresh endpoint (no separate JWT secret to manage).
 
 To deploy: connect this repository in the Vercel dashboard (Vercel auto-detects `vercel.json`), set the env vars below on the project, and deploy. No CLI or account token needed beyond the GitHub connection. It must not commit `.env` files, credentials, or database dumps to source control.
 
 | Required env var | Purpose |
 |---|---|
-| `DATABASE_URL` | Supabase Postgres connection string (Project Settings → Database → Connection string). Prefer the pooled "Transaction" connection string for serverless hosts. |
+| `POCKETBASE_URL` | This client's PocketBase instance URL (their subdomain on the shared VPS, e.g. `https://tailor-shop.example.com`). |
+| `POCKETBASE_SUPERUSER_EMAIL` / `POCKETBASE_SUPERUSER_PASSWORD` | The PocketBase superuser account the Node server authenticates as (created once per client instance — see `deploy/README.md`). |
 | `OWNER_EMAIL` | The email address that automatically becomes the admin the first time it registers/signs in. Set this to the shop owner's real email before go-live. |
 | `NODE_ENV` | Set to `production` **only on hosts that don't set it for you** (e.g. a plain VPS running `pnpm start`). On Vercel, don't set it — Vercel sets it automatically during builds, and setting it yourself makes `pnpm install` skip devDependencies, which breaks the API function's build. |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Project Settings → API. **Baked into the client bundle at build time** (must be set before the build runs) and also read server-side to verify tokens. |
+| `VITE_POCKETBASE_URL` | Same PocketBase URL as above. **Baked into the client bundle at build time** (must be set before the build runs) — the browser talks to PocketBase directly for sign-in/sign-up. |
 
 Optional, only if the client enables the corresponding feature: `BUILT_IN_FORGE_API_URL` / `BUILT_IN_FORGE_API_KEY` for the file storage proxy. Never expose server credentials to the browser.
 
 Note: Vercel serverless functions have a request body size ceiling (a few MB depending on plan) — fine for this app's JSON/API traffic, but worth knowing if a future feature needs large file uploads through `/api`.
 
-### First-time setup on a fresh Supabase project
+### First-time setup on a fresh PocketBase instance
 
-1. Create the Supabase project. Grab the Postgres connection string (`DATABASE_URL`) and the project URL and anon key (`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`) from Project Settings.
-2. In Supabase Auth settings, confirm the Email provider is enabled. Decide whether to require email confirmation before sign-in (Authentication → Providers → Email) — the app's sign-up form handles both cases.
-3. Run `pnpm exec drizzle-kit migrate` (with `DATABASE_URL` set) to create all tables in the Supabase database. Vercel has no build-time migration hook, so run this manually whenever `drizzle/schema.ts` changes, before or after deploying.
-4. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
+1. Provision the client's PocketBase instance on the VPS and create its superuser account — follow "Onboarding a new client" in `deploy/README.md`.
+2. Run `pnpm pocketbase:schema` against the new instance (see the same doc) to create all collections. Re-run it any time `scripts/pocketbase-schema.ts` gains new collections — it skips ones that already exist.
+3. Set `OWNER_EMAIL` to the shop owner's email, then have them register through the app's sign-up form with that exact email — they'll land as admin automatically. Everyone else who registers lands in a pending-approval queue until the admin approves them (Shop Settings → Staff & Access).
 
 ## Go-live acceptance test
 

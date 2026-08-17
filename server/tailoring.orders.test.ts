@@ -1,61 +1,76 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { auditLogs, customers, measurementProfiles, staffProfiles, tailoringOrders, userBusinessRoles, userCustomRoles } from "../drizzle/schema";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { User } from "@shared/pb-types";
+import { isPocketbaseTestBinaryAvailable, startTestPocketBase, useTestPocketBaseEnv, type TestPocketBase } from "./test/pocketbaseHarness";
 
-const { getDbMock } = vi.hoisted(() => ({ getDbMock: vi.fn() }));
-vi.mock("./db", () => ({ getDb: getDbMock }));
+// Real PocketBase integration test (not a Drizzle mock) — see server/test/pocketbaseHarness.ts.
+// Run scripts/fetch-pocketbase-test-binary.sh first for this to run instead of skip.
+describe.skipIf(!isPocketbaseTestBinaryAvailable())("tailoring order procedures", () => {
+  let instance: TestPocketBase;
+  let erpRouter: typeof import("./erp").erpRouter;
+  let actor: User;
 
-import { erpRouter } from "./erp";
+  beforeAll(async () => {
+    instance = await startTestPocketBase();
+    useTestPocketBaseEnv(instance);
+    ({ erpRouter } = await import("./erp"));
+    actor = await instance.pb.collection("users").create<User>({ email: "owner@example.com", password: "OwnerPass123!", passwordConfirm: "OwnerPass123!", name: "Owner", role: "admin", loginMethod: "test", lastSignedIn: new Date().toISOString() });
+    await instance.pb.collection("userBusinessRoles").create({ userId: actor.id, role: "admin", isActive: true });
+  }, 60000);
 
-const actor = { id: 77, openId: "owner", name: "Owner", email: "owner@example.com", loginMethod: "manus", role: "user" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
+  afterAll(async () => { await instance?.stop(); });
 
-function makeContext() {
-  return { user: actor, req: { protocol: "https", headers: {} }, res: {} } as never;
-}
-
-function makeDb(options: { measurementCustomerId?: number; tailorActive?: boolean; currentStatus?: string } = {}) {
-  const updates: unknown[] = [];
-  const rows = (table: unknown) => {
-    if (table === userBusinessRoles) return [{ id: 1, userId: actor.id, role: "sales", isActive: true }];
-    if (table === userCustomRoles) return [];
-    if (table === customers) return [{ id: 8, name: "Customer", phone: "33300011" }];
-    if (table === measurementProfiles) return [{ id: 12, customerId: options.measurementCustomerId ?? 8, version: 2 }];
-    if (table === staffProfiles) return [{ id: 6, isActive: options.tailorActive ?? true, name: "Tailor" }];
-    if (table === tailoringOrders) return [{ id: 44, status: options.currentStatus ?? "ready" }];
-    return [];
-  };
-  const db = {
-    select: () => ({ from: (table: unknown) => ({ where: () => ({ limit: async () => rows(table) }), orderBy: async () => rows(table) }) }),
-    insert: (table: unknown) => ({ values: () => ({ returning: async () => [{ id: table === tailoringOrders ? 501 : 1 }] }) }),
-    update: () => ({ set: (value: unknown) => ({ where: async () => { updates.push(value); return []; } }) }),
-  };
-  return { db, updates };
-}
-
-describe("tailoring order procedures", () => {
-  beforeEach(() => getDbMock.mockReset());
+  function makeContext() {
+    return { user: actor, req: { headers: {} }, res: {} } as never;
+  }
+  const seedCustomer = () => instance.pb.collection("customers").create({ name: "Customer", phone: "33300011", preferredContact: "Phone" });
+  const seedMeasurement = (customerId: string) => instance.pb.collection("measurementProfiles").create({ customerId, version: 1, measurementsJson: { neck: "15" }, effectiveDate: new Date().toISOString(), createdBy: actor.id });
+  const seedTailor = (isActive = true) => instance.pb.collection("staffProfiles").create({ name: "Tailor", jobTitle: "Tailor", baseSalary: 0, commissionRate: 0, isActive });
 
   it("creates a confirmed thoub order only when the measurement belongs to the chosen customer and the tailor is active", async () => {
-    const { db } = makeDb(); getDbMock.mockResolvedValue(db);
+    const customer = await seedCustomer();
+    const measurement = await seedMeasurement(customer.id);
+    const tailor = await seedTailor();
     const caller = erpRouter.createCaller(makeContext());
-    const result = await caller.tailoring.create({ customerId: 8, measurementProfileId: 12, assignedTailorId: 6, garmentType: "Thoub", quantity: 1, dueDate: "2026-08-28", price: 45, notes: "Classic fit", productionNotes: "" });
-    expect(result).toMatchObject({ id: 501 });
-    await expect(caller.tailoring.create({ customerId: 8, measurementProfileId: 12, assignedTailorId: 6, garmentType: "Thoub", quantity: 1, dueDate: "2026-08-28", price: 45, notes: "Classic fit", productionNotes: "" })).resolves.toMatchObject({ id: 501 });
+
+    const result = await caller.tailoring.create({ customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "2026-08-28", price: 45, notes: "Classic fit", productionNotes: "" });
+    expect(result.id).toBeTruthy();
+    expect(result.orderNumber).toMatch(/^TO-/);
+
+    // Each create() is a genuinely new order in PocketBase — unlike the old
+    // insert-mock this isn't a repeated fixed id.
+    const second = await caller.tailoring.create({ customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "2026-08-28", price: 45, notes: "Classic fit", productionNotes: "" });
+    expect(second.id).not.toBe(result.id);
   });
 
   it("rejects a measurement from a different customer and an inactive assigned tailor", async () => {
-    const measurementMismatch = makeDb({ measurementCustomerId: 9 }); getDbMock.mockResolvedValue(measurementMismatch.db);
+    const customer = await seedCustomer();
+    const otherCustomer = await seedCustomer();
+    const mismatchedMeasurement = await seedMeasurement(otherCustomer.id);
+    const tailor = await seedTailor();
     const caller = erpRouter.createCaller(makeContext());
-    await expect(caller.tailoring.create({ customerId: 8, measurementProfileId: 12, assignedTailorId: 6, garmentType: "Thoub", quantity: 1, dueDate: "", price: 0, notes: "", productionNotes: "" })).rejects.toThrow("measurement version");
-    const inactiveTailor = makeDb({ tailorActive: false }); getDbMock.mockResolvedValue(inactiveTailor.db);
-    await expect(caller.tailoring.create({ customerId: 8, measurementProfileId: 12, assignedTailorId: 6, garmentType: "Thoub", quantity: 1, dueDate: "", price: 0, notes: "", productionNotes: "" })).rejects.toThrow("active tailor");
+
+    await expect(caller.tailoring.create({ customerId: customer.id, measurementProfileId: mismatchedMeasurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "", price: 0, notes: "", productionNotes: "" })).rejects.toThrow("measurement version");
+
+    const ownMeasurement = await seedMeasurement(customer.id);
+    const inactiveTailor = await seedTailor(false);
+    await expect(caller.tailoring.create({ customerId: customer.id, measurementProfileId: ownMeasurement.id, assignedTailorId: inactiveTailor.id, garmentType: "Thoub", quantity: 1, dueDate: "", price: 0, notes: "", productionNotes: "" })).rejects.toThrow("active tailor");
   });
 
   it("persists a valid ready-to-handed-over update and blocks an invalid shortcut", async () => {
-    const valid = makeDb({ currentStatus: "ready" }); getDbMock.mockResolvedValue(valid.db);
+    const customer = await seedCustomer();
+    const measurement = await seedMeasurement(customer.id);
+    const tailor = await seedTailor();
     const caller = erpRouter.createCaller(makeContext());
-    await expect(caller.tailoring.update({ id: 44, assignedTailorId: 6, status: "handed_over", dueDate: "2026-08-28", productionNotes: "Collected by customer" })).resolves.toEqual({ success: true });
-    expect(valid.updates).toHaveLength(1);
-    const invalid = makeDb({ currentStatus: "confirmed" }); getDbMock.mockResolvedValue(invalid.db);
-    await expect(caller.tailoring.update({ id: 44, assignedTailorId: 6, status: "handed_over", dueDate: "", productionNotes: "" })).rejects.toThrow("stages in sequence");
+
+    const created = await caller.tailoring.create({ customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "2026-08-28", price: 45, notes: "", productionNotes: "" });
+    await instance.pb.collection("tailoringOrders").update(created.id, { status: "ready" });
+
+    await expect(caller.tailoring.update({ id: created.id, assignedTailorId: tailor.id, status: "handed_over", dueDate: "2026-08-28", productionNotes: "Collected by customer" })).resolves.toEqual({ success: true });
+    const updated = await instance.pb.collection("tailoringOrders").getOne(created.id);
+    expect(updated.status).toBe("handed_over");
+
+    // A fresh order defaults to "confirmed" — jumping straight to handed_over must be rejected.
+    const another = await caller.tailoring.create({ customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: "Thoub", quantity: 1, dueDate: "", price: 0, notes: "", productionNotes: "" });
+    await expect(caller.tailoring.update({ id: another.id, assignedTailorId: tailor.id, status: "handed_over", dueDate: "", productionNotes: "" })).rejects.toThrow("stages in sequence");
   });
 });

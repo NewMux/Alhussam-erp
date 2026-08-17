@@ -1,0 +1,14 @@
+# One block per client. Caddy gets a free Let's Encrypt certificate for each
+# subdomain automatically — no certbot, no manual renewal.
+#
+# Each client's PocketBase instance listens on 127.0.0.1:<their PORT> (set in
+# /etc/pocketbase/<client>.env, matching pocketbase@<client>.service). Point
+# the client's subdomain's DNS A/AAAA record at this VPS before reloading Caddy.
+
+tailor-shop.example.com {
+	reverse_proxy 127.0.0.1:8091
+}
+
+# next-client.example.com {
+# 	reverse_proxy 127.0.0.1:8092
+# }

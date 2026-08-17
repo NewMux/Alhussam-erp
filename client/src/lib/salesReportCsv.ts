@@ -5,7 +5,7 @@ type MonthlySale = {
   source: string;
   paymentMethod: string;
   paymentStatus: string;
-  total: string;
+  total: string | number;
   createdAt: Date | string;
   invoice: { invoiceNumber: string } | null;
 };

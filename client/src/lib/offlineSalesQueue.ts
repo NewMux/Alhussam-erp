@@ -8,20 +8,20 @@ export type OfflineSaleRecord = {
 };
 
 export type OfflineCatalogItem = {
-  id: number;
+  id: string;
   sku: string;
   name: string;
   category: string;
   description: string | null;
-  unitPrice: string;
-  inventoryItemId: number | null;
-  defaultFabricMeters: string | null;
+  unitPrice: number;
+  inventoryItemId: string | null;
+  defaultFabricMeters: number | null;
   isActive: boolean;
   inventory: {
-    id: number;
+    id: string;
     code: string;
     name: string;
-    quantity: string;
+    quantity: number;
     unit: string;
     isActive: boolean;
   } | null;

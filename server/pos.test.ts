@@ -19,10 +19,10 @@ describe("POS checkout totals", () => {
   });
 
   it("accepts one selected return item", () => {
-    expect(returnItemSelection.safeParse([{ saleItemId: 42, quantity: 1 }]).success).toBe(true);
+    expect(returnItemSelection.safeParse([{ saleItemId: "abc123def456789", quantity: 1 }]).success).toBe(true);
   });
 
   it("rejects a return payload containing multiple selected items", () => {
-    expect(returnItemSelection.safeParse([{ saleItemId: 42, quantity: 1 }, { saleItemId: 43, quantity: 1 }]).success).toBe(false);
+    expect(returnItemSelection.safeParse([{ saleItemId: "abc123def456789", quantity: 1 }, { saleItemId: "xyz987uvw654321", quantity: 1 }]).success).toBe(false);
   });
 });

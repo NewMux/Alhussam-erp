@@ -1,0 +1,31 @@
+# systemd template unit — one instance per client, e.g.:
+#   systemctl enable --now pocketbase@tailor-shop
+#
+# Install:
+#   sudo cp pocketbase@.service /etc/systemd/system/
+#   sudo mkdir -p /etc/pocketbase && sudo cp pocketbase.env.example /etc/pocketbase/<client>.env
+#   # edit /etc/pocketbase/<client>.env — set PORT to a free port for this client
+#   sudo mkdir -p /srv/clients/<client>/pb_data
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pocketbase@<client>
+
+[Unit]
+Description=PocketBase (%i)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/pocketbase/%i.env
+WorkingDirectory=/srv/clients/%i
+ExecStart=/opt/pocketbase/pocketbase serve --http=127.0.0.1:${PORT} --dir=/srv/clients/%i/pb_data
+Restart=on-failure
+RestartSec=5
+User=pocketbase
+Group=pocketbase
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/clients/%i
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
