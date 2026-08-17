@@ -618,7 +618,7 @@ function arabicUnitWord(quantity: number) {
   return "وحدة";
 }
 
-export function translateCopy(value: string, language: Language): string {
+export function translateCopy(value: string, language: Language, context?: { quantity?: number }): string {
   if (language === "en") return value;
   const trimmed = value.trim();
   const leading = value.slice(0, value.indexOf(trimmed));
@@ -643,6 +643,10 @@ export function translateCopy(value: string, language: Language): string {
   if (/^(\d+) units sold$/.test(trimmed)) {
     const quantity = Number(trimmed.match(/^(\d+) units sold$/)?.[1] || 0);
     return `${leading}تم بيع ${quantity} ${arabicUnitWord(quantity)}${trailing}`;
+  }
+  if (trimmed === "units sold") {
+    const quantity = context?.quantity;
+    return `${leading}${quantity ? `تم بيع ${quantity} ${arabicUnitWord(quantity)}` : "وحدات مباعة"}${trailing}`;
   }
   if (/^(\d+) open invoices? included in this balance\.$/.test(trimmed)) {
     const quantity = Number(trimmed.match(/^(\d+) open invoices? included in this balance\.$/)?.[1] || 0);
@@ -700,7 +704,11 @@ function translateDocument(language: Language) {
     if (!parent || parent.closest("[data-no-translate]") || ["SCRIPT", "STYLE", "NOSCRIPT"].includes(parent.tagName)) return;
     const original = ORIGINAL_TEXT.get(textNode) || textNode.nodeValue || "";
     ORIGINAL_TEXT.set(textNode, original);
-    textNode.nodeValue = translateCopy(original, language);
+    const siblings = parent ? Array.from(parent.childNodes) : [];
+    const siblingIndex = siblings.indexOf(textNode);
+    const previousText = siblingIndex > 0 ? siblings[siblingIndex - 1]?.textContent?.trim() || "" : "";
+    const quantity = /^\d+$/.test(previousText) ? Number(previousText) : undefined;
+    textNode.nodeValue = translateCopy(original, language, { quantity });
   });
   document.querySelectorAll<HTMLElement>("input[placeholder], textarea[placeholder], [aria-label], [title]").forEach(element => {
     ["placeholder", "aria-label", "title"].forEach(attribute => {
