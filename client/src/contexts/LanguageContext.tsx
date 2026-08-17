@@ -61,6 +61,7 @@ const ARABIC_COPY: Record<string, string> = {
   "Enter amount": "أدخل المبلغ",
   "Checkout": "إتمام البيع",
   "All Products": "كل المنتجات",
+  "All products": "كل المنتجات",
   "Tailoring": "التفصيل",
   "View order": "عرض الطلب",
   "0 items in order": "0 أصناف في الطلب",

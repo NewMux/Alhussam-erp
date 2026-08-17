@@ -20,11 +20,20 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
   const utils = trpc.useUtils();
   const checkout = trpc.pos.checkout.useMutation();
   const quickCheckout = trpc.pos.quickCheckout.useMutation();
+  const utilsRef = useRef(utils);
+  const checkoutRef = useRef(checkout);
+  const quickCheckoutRef = useRef(quickCheckout);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const syncingRef = useRef(false);
+
+  useEffect(() => {
+    utilsRef.current = utils;
+    checkoutRef.current = checkout;
+    quickCheckoutRef.current = quickCheckout;
+  }, [checkout, quickCheckout, utils]);
 
   const refreshPendingCount = useCallback(async () => {
     try {
@@ -48,8 +57,8 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
       let completed = 0;
       for (const record of queued) {
         try {
-          if (record.kind === "checkout") await checkout.mutateAsync(record.input as Parameters<typeof checkout.mutateAsync>[0]);
-          else await quickCheckout.mutateAsync(record.input as Parameters<typeof quickCheckout.mutateAsync>[0]);
+          if (record.kind === "checkout") await checkoutRef.current.mutateAsync(record.input as Parameters<typeof checkoutRef.current.mutateAsync>[0]);
+          else await quickCheckoutRef.current.mutateAsync(record.input as Parameters<typeof quickCheckoutRef.current.mutateAsync>[0]);
           await removeOfflineSale(record.clientReference);
           completed += 1;
           setPendingCount(current => Math.max(0, current - 1));
@@ -61,13 +70,13 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
       await refreshPendingCount();
       if (completed) {
         await Promise.all([
-          utils.erp.dashboard.invalidate(),
-          utils.erp.invoices.list.invalidate(),
-          utils.erp.sales.list.invalidate(),
-          utils.erp.salesHistory.list.invalidate(),
-          utils.erp.salesHistory.monthlyReport.invalidate(),
-          utils.erp.inventory.list.invalidate(),
-          utils.pos.session.current.invalidate(),
+          utilsRef.current.erp.dashboard.invalidate(),
+          utilsRef.current.erp.invoices.list.invalidate(),
+          utilsRef.current.erp.sales.list.invalidate(),
+          utilsRef.current.erp.salesHistory.list.invalidate(),
+          utilsRef.current.erp.salesHistory.monthlyReport.invalidate(),
+          utilsRef.current.erp.inventory.list.invalidate(),
+          utilsRef.current.pos.session.current.invalidate(),
         ]);
         toast.success(`${completed} offline sale${completed === 1 ? "" : "s"} synchronized`);
       }
@@ -75,7 +84,7 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
       syncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [checkout, isAuthenticated, quickCheckout, refreshPendingCount, utils]);
+  }, [isAuthenticated, refreshPendingCount]);
 
   useEffect(() => {
     void refreshPendingCount();
@@ -91,10 +100,6 @@ export function OfflineSyncProvider({ children }: { children: React.ReactNode })
       window.removeEventListener("offline", onOffline);
     };
   }, [refreshPendingCount, syncNow]);
-
-  useEffect(() => {
-    void syncNow();
-  }, [isAuthenticated, syncNow]);
 
   const value = useMemo(() => ({ isOnline, pendingCount, isSyncing, syncError, refreshPendingCount, syncNow }), [isOnline, pendingCount, isSyncing, syncError, refreshPendingCount, syncNow]);
   return <OfflineSyncContext.Provider value={value}>{children}</OfflineSyncContext.Provider>;
