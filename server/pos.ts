@@ -7,6 +7,9 @@ import { protectedProcedure, router } from "./_core/trpc";
 
 const money = (value: number) => Number(value.toFixed(3)).toFixed(3);
 const paymentMethod = z.enum(["cash", "benefitpay", "bank_transfer", "credit_card"]);
+const returnMode = z.enum(["items", "amount"]);
+const taxFor = (netAmount: number, shop: { vatEnabled?: boolean | null; vatRate?: string | number | null } | null | undefined) => { const vatRate = shop?.vatEnabled ? Number(shop.vatRate || 0) : 0; const vatAmount = Math.max(0, netAmount) * vatRate / 100; return { vatRate, vatAmount, netAmount: Math.max(0, netAmount), grossAmount: Math.max(0, netAmount) + vatAmount }; };
+const taxFromGross = (grossAmount: number, shop: { vatEnabled?: boolean | null; vatRate?: string | number | null } | null | undefined) => { const vatRate = shop?.vatEnabled ? Number(shop.vatRate || 0) : 0; const gross = Math.max(0, grossAmount); const netAmount = gross / (1 + vatRate / 100); return { vatRate, vatAmount: gross - netAmount, netAmount, grossAmount: gross }; };
 const cartItem = z.object({
   serviceId: z.number().int().optional(),
   inventoryItemId: z.number().int().optional(),
@@ -101,6 +104,8 @@ const tailoringCheckoutInput = z.object({
   dueDate: z.string().optional(),
   orderPrice: z.number().positive(),
   paymentAmount: z.number().positive(),
+  customerSuppliedFabric: z.boolean().default(false),
+  fabricNotes: z.string().max(2000).optional(),
   paymentMethod,
   notes: z.string().max(3000),
   productionNotes: z.string().max(3000),
@@ -119,8 +124,14 @@ const returnInput = z.object({
   sessionId: z.number().int().positive(),
   originalSaleId: z.number().int().positive(),
   paymentMethod,
+  mode: returnMode.default("items"),
+  amount: z.number().positive().max(1000000).optional(),
+  reason: z.string().trim().max(2000).optional(),
   note: z.string().trim().max(2000).optional(),
-  items: z.array(z.object({ saleItemId: z.number().int().positive(), quantity: z.number().positive() })).min(1),
+  items: z.array(z.object({ saleItemId: z.number().int().positive(), quantity: z.number().positive() })).optional(),
+}).superRefine((value, ctx) => {
+  if (value.mode === "items" && (!value.items || value.items.length === 0)) ctx.addIssue({ code: "custom", path: ["items"], message: "Choose at least one item to return." });
+  if (value.mode === "amount" && (!value.amount || value.amount <= 0)) ctx.addIssue({ code: "custom", path: ["amount"], message: "Enter a refund amount." });
 });
 
 async function validateSession(tx: any, sessionId: number) {
@@ -242,12 +253,14 @@ export const posRouter = router({
       const code = await resolveDiscount(tx, input.discountCode, subtotal - lineDiscount);
       const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
       if (input.customerId && !customer) throw new TRPCError({ code: "NOT_FOUND", message: "The selected customer was not found." });
-      const total = Math.max(0, subtotal - lineDiscount - input.discount - code.amount);
+      const taxableSubtotal = Math.max(0, subtotal - lineDiscount - input.discount - code.amount);
+      const tax = taxFor(taxableSubtotal, shop);
+      const total = tax.grossAmount;
       const payments = input.payments?.length ? input.payments : input.paymentStatus === "paid" ? [{ method: input.paymentMethod, amount: total }] : [];
       const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
       if (paidAmount > total + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "Payments cannot exceed the order total." });
       const calculatedStatus = paidAmount >= total - 0.001 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
-      const saleResult = await tx.insert(sales).values({ saleNumber, clientReference: input.clientReference || null, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, clientReference: input.clientReference || null, customerId: customer?.id || null, customerNameSnapshot: customer?.name || input.customerName, customerPhoneSnapshot: customer?.phone || input.customerPhone || null, subtotal: money(subtotal), discount: money(lineDiscount + input.discount + code.amount), vatRate: money(tax.vatRate), vatAmount: money(tax.vatAmount), total: money(total), paidAmount: money(paidAmount), paymentMethod: payments[0]?.method || input.paymentMethod, paymentStatus: calculatedStatus, source: "counter", sessionId: input.sessionId, discountCodeId: code.id, discountCodeSnapshot: code.snapshot, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The sale header could not be created." });
       for (const item of resolved) {
@@ -263,7 +276,7 @@ export const posRouter = router({
       }
       if (payments.length) for (const payment of payments) await tx.insert(posPayments).values({ saleId, method: payment.method, amount: money(payment.amount), reference: payment.reference || null, createdBy: ctx.user.id });
       if (code.id) await tx.update(discountCodes).set({ usedCount: (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0]?.usedCount ? (await tx.select().from(discountCodes).where(eq(discountCodes.id, code.id)).limit(1))[0].usedCount + 1 : 1 }).where(eq(discountCodes.id, code.id));
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: calculatedStatus, notes: input.note || "Issued from Odoo-style POS register." }).returning({ id: invoices.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: calculatedStatus, notes: `${input.note || "Issued from Odoo-style POS register."}${tax.vatAmount > 0 ? ` VAT ${money(tax.vatRate)}% included.` : ""}` }).returning({ id: invoices.id });
       const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The invoice could not be created." });
       if (input.heldOrderId) await tx.update(posOrders).set({ status: "paid", updatedAt: new Date() }).where(eq(posOrders.id, input.heldOrderId));
@@ -279,6 +292,8 @@ export const posRouter = router({
     const db = await dbOrThrow();
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const saleNumber = `POS-${Date.now()}`;
+    const tax = taxFor(input.amount, shop);
+    const total = tax.grossAmount;
     const checkout = await db.transaction(async tx => {
       const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
       const customer = input.customerId ? (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0] : null;
@@ -291,8 +306,10 @@ export const posRouter = router({
         customerPhoneSnapshot: customer?.phone || input.customerPhone || null,
         subtotal: money(input.amount),
         discount: money(0),
-        total: money(input.amount),
-        paidAmount: money(input.amount),
+        vatRate: money(tax.vatRate),
+        vatAmount: money(tax.vatAmount),
+        total: money(total),
+        paidAmount: money(total),
         paymentMethod: input.paymentMethod,
         paymentStatus: "paid",
         source: "counter",
@@ -313,11 +330,11 @@ export const posRouter = router({
         assignedTailorId: null,
         measurementProfileId: null,
       });
-      await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(input.amount), reference: null, createdBy: ctx.user.id });
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || "Walk-in amount sale from POS register." }).returning({ id: invoices.id });
+      await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(total), reference: null, createdBy: ctx.user.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: `${input.note || "Walk-in amount sale from POS register."}${tax.vatAmount > 0 ? ` VAT ${money(tax.vatRate)}% added.` : ""}` }).returning({ id: invoices.id });
       const invoiceId = Number(invoiceResult[0]?.id || 0);
       if (!invoiceId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The walk-in invoice could not be created." });
-      return { saleId, invoiceId, total: input.amount, paidAmount: input.amount, paymentStatus: "paid" as const };
+      return { saleId, invoiceId, total, paidAmount: total, paymentStatus: "paid" as const };
     });
     await audit(ctx.user.id, "POS_WALKIN_CHECKOUT_COMPLETED", "sale", checkout.saleId, { saleNumber, total: checkout.total, paymentMethod: input.paymentMethod });
     return { id: checkout.saleId, invoiceId: checkout.invoiceId, total: checkout.total, paidAmount: checkout.paidAmount, paymentStatus: checkout.paymentStatus, saleNumber };
@@ -343,18 +360,27 @@ export const posRouter = router({
         const priorReturns = await tx.select().from(sales).where(eq(sales.returnOfSaleId, original.id));
         const priorReturnIds = new Set(priorReturns.map(row => row.id));
         const priorReturnItems = (await tx.select().from(saleItems)).filter(item => priorReturnIds.has(item.saleId));
-        const lines = input.items.map(request => {
+        const lines = input.mode === "items" ? (input.items || []).map(request => {
           const source = originalItems.find(item => item.id === request.saleItemId);
           if (!source) throw new TRPCError({ code: "BAD_REQUEST", message: "A returned item does not belong to the original sale." });
           const alreadyReturned = priorReturnItems.filter(item => item.nameSnapshot === source.nameSnapshot).reduce((sum, item) => sum + Math.abs(Number(item.quantity)), 0);
           if (alreadyReturned + request.quantity > Number(source.quantity) + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: `Cannot return more ${source.nameSnapshot} than was sold.` });
-          return { source, quantity: request.quantity, lineTotal: request.quantity * Number(source.unitPrice) };
-        });
-        const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+          const originalQuantity = Math.max(Number(source.quantity), 0.001);
+          return { source, quantity: request.quantity, lineTotal: request.quantity * (Number(source.lineTotal) / originalQuantity) };
+        }) : [];
+        const originalGross = Math.max(0, Number(original.total));
+        const alreadyRefundedGross = priorReturns.reduce((sum, row) => sum + Math.abs(Number(row.total)), 0);
+        const requestedGross = input.mode === "amount" ? Number(input.amount || 0) : lines.reduce((sum, line) => sum + line.lineTotal, 0) * (1 + Number(original.vatRate || 0) / 100);
+        if (requestedGross <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "The refund amount must be greater than zero." });
+        if (alreadyRefundedGross + requestedGross > originalGross + 0.001) throw new TRPCError({ code: "BAD_REQUEST", message: "The refund cannot exceed the remaining amount on the original sale." });
+        if (input.mode === "amount" && !input.reason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Enter a reason for an amount-based refund." });
+        const vatRate = Number(original.vatRate || 0);
+        const netTotal = input.mode === "amount" ? requestedGross / (1 + vatRate / 100) : lines.reduce((sum, line) => sum + line.lineTotal, 0);
+        const vatAmount = requestedGross - netTotal;
         const saleNumber = `RET-${Date.now()}`;
-        const saleResult = await tx.insert(sales).values({ saleNumber, customerId: original.customerId, customerNameSnapshot: original.customerNameSnapshot, customerPhoneSnapshot: original.customerPhoneSnapshot, subtotal: money(-total), discount: "0.000", total: money(-total), paidAmount: money(-total), paymentMethod: input.paymentMethod, paymentStatus: "paid", source: "counter", sessionId: input.sessionId, returnOfSaleId: original.id, createdBy: ctx.user.id }).returning({ id: sales.id });
+        const saleResult = await tx.insert(sales).values({ saleNumber, customerId: original.customerId, customerNameSnapshot: original.customerNameSnapshot, customerPhoneSnapshot: original.customerPhoneSnapshot, subtotal: money(-netTotal), discount: "0.000", vatRate: money(vatRate), vatAmount: money(-vatAmount), total: money(-requestedGross), paidAmount: money(-requestedGross), paymentMethod: input.paymentMethod, paymentStatus: "paid", source: "counter", sessionId: resolvedSession.id, returnOfSaleId: original.id, returnMode: input.mode, returnReason: input.reason || input.note || null, createdBy: ctx.user.id }).returning({ id: sales.id });
         const saleId = Number(saleResult[0]?.id || 0);
-        for (const line of lines) {
+        if (input.mode === "items") for (const line of lines) {
           await tx.insert(saleItems).values({ saleId, serviceId: line.source.serviceId, inventoryItemId: line.source.inventoryItemId, nameSnapshot: line.source.nameSnapshot, quantity: money(-line.quantity), unitPrice: money(Number(line.source.unitPrice)), lineDiscount: money(Number(line.source.lineDiscount)), lineTotal: money(-line.lineTotal), assignedTailorId: line.source.assignedTailorId, measurementProfileId: line.source.measurementProfileId });
           if (line.source.inventoryItemId) {
             const stock = (await tx.select().from(inventoryItems).where(eq(inventoryItems.id, line.source.inventoryItemId)).limit(1))[0];
@@ -365,10 +391,12 @@ export const posRouter = router({
               await tx.insert(stockMovements).values({ inventoryItemId: stock.id, movementType: "return", quantityChange: money(line.quantity), quantityBefore: money(before), quantityAfter: money(after), referenceType: "sale", referenceId: saleId, createdBy: ctx.user.id, notes: `${saleNumber} · return of ${original.saleNumber}` });
             }
           }
+        } else {
+          await tx.insert(saleItems).values({ saleId, serviceId: null, inventoryItemId: null, nameSnapshot: `Refund · ${input.reason}`, quantity: "1.000", unitPrice: money(netTotal), lineDiscount: "0.000", lineTotal: money(-netTotal), assignedTailorId: null, measurementProfileId: null });
         }
-        await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(-total), reference: `Refund of ${original.saleNumber}`, createdBy: ctx.user.id });
-        const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || `Refund of ${original.saleNumber}.` }).returning({ id: invoices.id });
-        return { saleId, invoiceId: Number(invoiceResult[0]?.id || 0), saleNumber, total: -total };
+        await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(-requestedGross), reference: `Refund of ${original.saleNumber}${input.reason ? ` · ${input.reason}` : ""}`, createdBy: ctx.user.id });
+        const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: "paid", notes: input.note || `${input.mode === "amount" ? "Amount refund" : "Item return"} of ${original.saleNumber}${input.reason ? ` · ${input.reason}` : ""}.` }).returning({ id: invoices.id });
+        return { saleId, invoiceId: Number(invoiceResult[0]?.id || 0), saleNumber, total: -requestedGross };
       });
       await audit(ctx.user.id, "POS_RETURN_COMPLETED", "sale", result.saleId, { originalSaleId: input.originalSaleId, total: result.total });
       return result;
@@ -380,7 +408,8 @@ export const posRouter = router({
     const shop = (await db.select().from(shopSettings).limit(1))[0];
     const orderNumber = `TO-${Date.now()}`;
     const saleNumber = `POS-TO-${Date.now()}`;
-    const paymentStatus = input.paymentAmount >= input.orderPrice ? "paid" : "partial" as const;
+    const paymentStatus = input.paymentAmount >= input.orderPrice - 0.001 ? "paid" : "partial" as const;
+    const paymentTax = taxFromGross(input.paymentAmount, shop);
     const transaction = await db.transaction(async tx => {
       const resolvedSession = await resolveSession(tx, input.sessionId, ctx.user.id);
       const customer = (await tx.select().from(customers).where(eq(customers.id, input.customerId)).limit(1))[0];
@@ -389,13 +418,13 @@ export const posRouter = router({
       if (!measurement || measurement.customerId !== customer.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a saved measurement version belonging to this customer." });
       const tailor = (await tx.select().from(staffProfiles).where(eq(staffProfiles.id, input.assignedTailorId)).limit(1))[0];
       if (!tailor?.isActive) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose an active tailor for this production order." });
-      const orderResult = await tx.insert(tailoringOrders).values({ orderNumber, customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: input.garmentType, quantity: input.quantity, dueDate: input.dueDate ? new Date(input.dueDate) : null, price: money(input.orderPrice), status: "confirmed", notes: input.notes || null, productionNotes: input.productionNotes || null, createdBy: ctx.user.id }).returning({ id: tailoringOrders.id });
+      const orderResult = await tx.insert(tailoringOrders).values({ orderNumber, customerId: customer.id, measurementProfileId: measurement.id, assignedTailorId: tailor.id, garmentType: input.garmentType, quantity: input.quantity, dueDate: input.dueDate ? new Date(input.dueDate) : null, price: money(input.orderPrice), customerSuppliedFabric: input.customerSuppliedFabric, fabricNotes: input.fabricNotes || null, status: "confirmed", notes: input.notes || null, productionNotes: input.productionNotes || null, createdBy: ctx.user.id }).returning({ id: tailoringOrders.id });
       const orderId = Number(orderResult[0]?.id || 0);
-      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer.id, customerNameSnapshot: customer.name, customerPhoneSnapshot: customer.phone || null, subtotal: money(input.paymentAmount), discount: "0.000", total: money(input.paymentAmount), paidAmount: money(input.paymentAmount), paymentMethod: input.paymentMethod, paymentStatus, source: "tailoring", sessionId: input.sessionId, createdBy: ctx.user.id }).returning({ id: sales.id });
+      const saleResult = await tx.insert(sales).values({ saleNumber, customerId: customer.id, customerNameSnapshot: customer.name, customerPhoneSnapshot: customer.phone || null, subtotal: money(paymentTax.netAmount), discount: "0.000", vatRate: money(paymentTax.vatRate), vatAmount: money(paymentTax.vatAmount), total: money(input.paymentAmount), paidAmount: money(input.paymentAmount), paymentMethod: input.paymentMethod, paymentStatus, source: "tailoring", sessionId: input.sessionId, createdBy: ctx.user.id }).returning({ id: sales.id });
       const saleId = Number(saleResult[0]?.id || 0);
       await tx.insert(posPayments).values({ saleId, method: input.paymentMethod, amount: money(input.paymentAmount), reference: `${orderNumber} initial payment`, createdBy: ctx.user.id });
-      await tx.insert(saleItems).values({ saleId, serviceId: null, inventoryItemId: null, nameSnapshot: `${input.garmentType} tailoring order · ${paymentStatus === "paid" ? "full payment" : "deposit"}`, quantity: "1.000", unitPrice: money(input.paymentAmount), lineDiscount: "0.000", lineTotal: money(input.paymentAmount), assignedTailorId: tailor.id, measurementProfileId: measurement.id });
-      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: paymentStatus, notes: `${orderNumber} · ${input.garmentType} · quoted ${money(input.orderPrice)} BHD · ${paymentStatus === "paid" ? "full payment" : "deposit"} collected from POS.` }).returning({ id: invoices.id });
+      await tx.insert(saleItems).values({ saleId, serviceId: null, inventoryItemId: null, nameSnapshot: `${input.garmentType} tailoring order · ${paymentStatus === "paid" ? "full payment" : "deposit"}`, quantity: "1.000", unitPrice: money(paymentTax.netAmount), lineDiscount: "0.000", lineTotal: money(paymentTax.netAmount), assignedTailorId: tailor.id, measurementProfileId: measurement.id });
+      const invoiceResult = await tx.insert(invoices).values({ saleId, invoiceNumber: `${shop?.invoicePrefix || "INV"}-${String(saleId).padStart(6, "0")}`, status: paymentStatus, notes: `${orderNumber} · ${input.garmentType} · quoted ${money(input.orderPrice)} BHD incl. VAT · ${paymentStatus === "paid" ? "full payment" : "deposit"} collected from POS.${input.customerSuppliedFabric ? " Customer supplied fabric." : " Shop fabric."}` }).returning({ id: invoices.id });
       return { orderId, saleId, invoiceId: Number(invoiceResult[0]?.id || 0) };
     });
     await audit(ctx.user.id, "POS_TAILORING_CHECKOUT_COMPLETED", "tailoringOrder", transaction.orderId, { orderNumber, saleNumber, paymentAmount: input.paymentAmount, orderPrice: input.orderPrice, paymentStatus });
