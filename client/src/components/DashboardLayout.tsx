@@ -68,7 +68,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="min-w-0"><p className="truncate text-sm font-semibold">{clientBrand.name}</p><p className="truncate text-xs text-muted-foreground">{currentPage ? t(currentPage.label) : t("Tailor ERP")}</p></div>
         </div>
         <p className="ml-auto hidden text-sm text-muted-foreground lg:block">{t("Secure business workspace")}</p>
-        <Button data-no-translate variant="outline" size="sm" className="hidden h-10 rounded-xl lg:flex" onClick={toggleLanguage} aria-label={isArabic ? t("Switch to English") : t("Switch to Arabic")}>{isArabic ? "EN" : "عربي"}</Button>
         <div className="ml-auto flex items-center gap-2 lg:hidden">
           <Link href="/team" aria-label={t("Staff & Payroll")} className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${isActive("/team") ? "border-primary bg-primary text-primary-foreground" : "bg-white text-foreground"}`}>
             <Users className="h-4 w-4" />
