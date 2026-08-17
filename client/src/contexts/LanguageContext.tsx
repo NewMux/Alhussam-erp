@@ -212,15 +212,21 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
     document.documentElement.classList.toggle("arabic-ui", language === "ar");
     let translating = false;
+    let observer: MutationObserver;
     const apply = () => {
       if (translating) return;
       translating = true;
-      translateDocument(language);
-      translating = false;
+      observer?.disconnect();
+      try {
+        translateDocument(language);
+      } finally {
+        translating = false;
+        observer?.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "aria-label", "title"] });
+      }
     };
-    apply();
-    const observer = new MutationObserver(apply);
+    observer = new MutationObserver(apply);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "aria-label", "title"] });
+    apply();
     return () => observer.disconnect();
   }, [language]);
 
