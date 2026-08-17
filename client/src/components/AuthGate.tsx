@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Loader2, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ export default function AuthGate() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const { isArabic, toggleLanguage } = useLanguage();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -46,7 +48,8 @@ export default function AuthGate() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-stone-50 p-6">
-      <div className="w-full max-w-md rounded-2xl border bg-white p-8 shadow-sm">
+      <div className="relative w-full max-w-md rounded-2xl border bg-white p-8 shadow-sm">
+        <Button data-no-translate type="button" variant="outline" size="sm" className="absolute right-5 top-5 rounded-xl" onClick={toggleLanguage}>{isArabic ? "EN" : "عربي"}</Button>
         <Scissors className="mx-auto h-8 w-8 text-primary" />
         <h1 className="mt-5 text-center text-2xl font-semibold">
           {mode === "login" ? "Sign in to Al-Mamlaka ERP" : "Create your account"}
@@ -59,7 +62,7 @@ export default function AuthGate() {
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           {mode === "register" && (
-            <div className="space-y-1.5 text-left">
+            <div className="space-y-1.5">
               <Label htmlFor="name">Full name</Label>
               <Input
                 id="name"
@@ -72,7 +75,7 @@ export default function AuthGate() {
               />
             </div>
           )}
-          <div className="space-y-1.5 text-left">
+          <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
@@ -84,7 +87,7 @@ export default function AuthGate() {
               autoComplete="email"
             />
           </div>
-          <div className="space-y-1.5 text-left">
+          <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"

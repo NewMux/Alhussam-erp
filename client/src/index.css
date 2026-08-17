@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
@@ -8,6 +8,9 @@
   * { @apply border-border outline-ring/50; }
   html { background: var(--background); -webkit-tap-highlight-color: transparent; }
   body { @apply bg-background text-foreground; min-height: 100dvh; overscroll-behavior-y: none; font-family: "DM Sans", sans-serif; }
+  html.arabic-ui body { font-family: "Noto Sans Arabic", "DM Sans", sans-serif; }
+  html[dir="rtl"] input, html[dir="rtl"] select, html[dir="rtl"] textarea { text-align: right; }
+  html[dir="rtl"] .numeric, html[dir="rtl"] [data-numeric="true"] { direction: ltr; text-align: left; }
   button, a, input, select, textarea { touch-action: manipulation; }
 }
 
