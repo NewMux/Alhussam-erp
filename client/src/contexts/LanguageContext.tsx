@@ -706,8 +706,10 @@ function translateDocument(language: Language) {
     ORIGINAL_TEXT.set(textNode, original);
     const siblings = parent ? Array.from(parent.childNodes) : [];
     const siblingIndex = siblings.indexOf(textNode);
-    const previousText = siblingIndex > 0 ? siblings[siblingIndex - 1]?.textContent?.trim() || "" : "";
-    const quantity = /^\d+$/.test(previousText) ? Number(previousText) : undefined;
+    const previousNode = siblingIndex > 0 && siblings[siblingIndex - 1]?.nodeType === Node.TEXT_NODE ? siblings[siblingIndex - 1] as Text : undefined;
+    const previousOriginal = previousNode ? (ORIGINAL_TEXT.get(previousNode) || previousNode.nodeValue || "").trim() : "";
+    const quantity = /^\d+$/.test(previousOriginal) ? Number(previousOriginal) : undefined;
+    if (language === "ar" && original.trim() === "units sold" && quantity && previousNode) previousNode.nodeValue = "";
     textNode.nodeValue = translateCopy(original, language, { quantity });
   });
   document.querySelectorAll<HTMLElement>("input[placeholder], textarea[placeholder], [aria-label], [title]").forEach(element => {
