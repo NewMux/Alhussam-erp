@@ -176,6 +176,7 @@ const ARABIC_COPY: Record<string, string> = {
   "No customers yet. Create the first durable client record.": "لا يوجد عملاء بعد. أنشئ أول سجل عميل دائم.",
   "Measurement history": "سجل القياسات",
   "Choose a customer to view saved fitting versions.": "اختر عميلًا لعرض الإصدارات المحفوظة للقياسات.",
+  "Choose a customer to manage their profile and fitting history.": "اختر عميلًا لإدارة ملفه وسجل قياساته.",
   "Select a customer from the directory.": "اختر عميلًا من الدليل.",
   "No measurement version is saved for this client yet.": "لا توجد نسخة قياسات محفوظة لهذا العميل بعد.",
   "No saved measurement values yet. Use Measurements to add them.": "لا توجد قيم قياسات محفوظة بعد. استخدم القياسات لإضافتها.",
