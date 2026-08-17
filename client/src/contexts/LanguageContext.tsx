@@ -586,6 +586,73 @@ const ARABIC_COPY: Record<string, string> = {
   "Tailor not assigned": "لم يُعيّن خياط",
   "No due date": "لا يوجد تاريخ تسليم",
   "No order notes.": "لا توجد ملاحظات على الطلب.",
+  "Starting sales": "جارٍ بدء المبيعات",
+  "Starting": "جارٍ البدء",
+  "Not started": "لم يبدأ",
+  "Start selling": "بدء البيع",
+  "Offline sales mode": "وضع المبيعات دون اتصال",
+  "Offline": "دون اتصال",
+  "Offline ready": "دون اتصال — جاهز",
+  "Sales are saved on this device and will sync when internet returns.": "تُحفظ المبيعات على هذا الجهاز وتُزامن عند عودة الإنترنت.",
+  "Add items or enter a walk-in amount": "أضف الأصناف أو أدخل مبلغ العميل الحاضر",
+  "waiting to sync": "بانتظار المزامنة",
+  "New staff requests": "طلبات الموظفين الجديدة",
+  "linked to": "مرتبط بـ",
+  "standalone": "مستقل",
+  "Payroll:": "الرواتب:",
+  "admin": "مسؤول النظام",
+  "Shop manager": "مدير المتجر",
+  "Choose your role…": "اختر دورك…",
+  "Create a role first": "أنشئ دورًا أولًا",
+  "Select a customer": "اختر عميلًا",
+  "Standard fit": "ملاءمة قياسية",
+  "Not set": "غير محدد",
+  "Neck (in)": "الرقبة (بوصة)",
+  "Chest (in)": "الصدر (بوصة)",
+  "Waist (in)": "الخصر (بوصة)",
+  "Shoulder (in)": "الكتف (بوصة)",
+  "Sleeve (in)": "الكم (بوصة)",
+  "Length (in)": "الطول (بوصة)",
+  "Add an email to send this balance.": "أضف بريدًا إلكترونيًا لإرسال هذا الرصيد.",
+  "No phone": "لا يوجد هاتف",
+  "No phone recorded": "لا يوجد هاتف مسجل",
+  "Invoice pending": "الفاتورة قيد الانتظار",
+  "Sale archived": "البيع مؤرشف",
+  "Archived customer": "عميل مؤرشف",
+  "Archived": "مؤرشف",
+  "counter": "الكاونتر",
+  "manual": "يدوي",
+  "tailoring": "التفصيل",
+  "paid": "مدفوعة",
+  "partial": "مدفوعة جزئيًا",
+  "unpaid": "غير مدفوعة",
+  "benefitpay": "بنفت بي",
+  "Calculate pay": "حساب الراتب",
+  "Selected": "محدد",
+  "linked": "مرتبط",
+  "Code": "الرمز",
+  "Material / Fabric Name": "اسم المادة / القماش",
+  "Color & Width": "اللون والعرض",
+  "Available Balance": "الرصيد المتاح",
+  "Min Threshold": "الحد الأدنى",
+  "Cost / Unit": "التكلفة / الوحدة",
+  "Actions": "الإجراءات",
+  "Width not set": "العرض غير محدد",
+  "Meters": "أمتار",
+  "unit": "وحدة",
+  "fabric": "قماش",
+  "lining": "بطانة",
+  "buttons": "أزرار",
+  "thread": "خيط",
+  "accessory": "إكسسوار",
+  "other": "أخرى",
+  "Measurement": "القياس",
+  "version": "الإصدار",
+  "Due": "التسليم",
+  "Open production details": "فتح تفاصيل الإنتاج",
+  "No note": "لا توجد ملاحظة",
+  "No matching transactions": "لا توجد معاملات مطابقة",
+  "Delivery prepared": "تم إعداد التسليم",
 };
 
 export function getStoredLanguage(): Language {
@@ -639,7 +706,31 @@ export function translateCopy(value: string, language: Language, context?: { qua
     if (arabicDetail[detail]) return `${leading}خلال ${arabicDetail[detail]}${trailing}`;
   }
   if (/^Version (\d+)$/.test(trimmed)) return `${leading}الإصدار ${trimmed.match(/^Version (\d+)$/)?.[1] || ""}${trailing}`;
+  if (/^(\d+) matching transactions?\. Every sale retains its source and invoice reference\.$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) matching transactions?/)?.[1] || 0);
+    return `${leading}${quantity === 0 ? "لا توجد معاملات مطابقة" : `${quantity} ${quantity === 1 ? "معاملة مطابقة" : "معاملات مطابقة"}`}. تحتفظ كل عملية بيع بمصدرها ومرجع فاتورتها.${trailing}`;
+  }
   if (/^(\d+) items? in order$/.test(trimmed)) return `${leading}${trimmed.match(/^(\d+) items? in order$/)?.[1] || "0"} صنف في الطلب${trailing}`;
+  if (trimmed === "items in order") {
+    const quantity = context?.quantity ?? 0;
+    return `${leading}${quantity} ${quantity === 1 ? "صنف" : "أصناف"} في الطلب${trailing}`;
+  }
+  if (/^(\d+) offline sales? waiting to sync$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) offline sales?/)?.[1] || 0);
+    return `${leading}${quantity} ${quantity === 1 ? "بيع دون اتصال" : "مبيعات دون اتصال"} بانتظار المزامنة${trailing}`;
+  }
+  if (/^(\d+) sales?$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) sales?$/)?.[1] || 0);
+    return `${leading}${quantity} ${quantity === 1 ? "بيع" : "مبيعات"}${trailing}`;
+  }
+  if (/^(\d+) units$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) units$/)?.[1] || 0);
+    return `${leading}${quantity} ${arabicUnitWord(quantity)}${trailing}`;
+  }
+  if (/^(\d+) records$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) records$/)?.[1] || 0);
+    return `${leading}${quantity} ${quantity === 1 ? "سجل" : "سجلات"}${trailing}`;
+  }
   if (/^(\d+) units sold$/.test(trimmed)) {
     const quantity = Number(trimmed.match(/^(\d+) units sold$/)?.[1] || 0);
     return `${leading}تم بيع ${quantity} ${arabicUnitWord(quantity)}${trailing}`;
@@ -665,6 +756,10 @@ export function translateCopy(value: string, language: Language, context?: { qua
     const quantity = Number(trimmed.match(/^(\d+) pieces?$/)?.[1] || 0);
     return `${leading}${quantity} ${quantity === 1 ? "قطعة" : "قطع"}${trailing}`;
   }
+  const widthMatch = trimmed.match(/^(\d+(?:\.\d+)?) in width$/);
+  if (widthMatch) return `${leading}${widthMatch[1]} بوصة عرض${trailing}`;
+  const perUnitMatch = trimmed.match(/^per (.+)$/);
+  if (perUnitMatch) return `${leading}لكل ${perUnitMatch[1]}${trailing}`;
   const dateMatch = trimmed.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(,?\s+\d{4})?(.*)$/);
   if (dateMatch) {
     const [, month, day, year = "", remainder = ""] = dateMatch;
@@ -708,8 +803,9 @@ function translateDocument(language: Language) {
     const siblingIndex = siblings.indexOf(textNode);
     const previousNode = siblingIndex > 0 && siblings[siblingIndex - 1]?.nodeType === Node.TEXT_NODE ? siblings[siblingIndex - 1] as Text : undefined;
     const previousOriginal = previousNode ? (ORIGINAL_TEXT.get(previousNode) || previousNode.nodeValue || "").trim() : "";
-    const quantity = /^\d+$/.test(previousOriginal) ? Number(previousOriginal) : undefined;
-    if (language === "ar" && original.trim() === "units sold" && quantity && previousNode) previousNode.nodeValue = "";
+    const quantity = /^\d+(?:\.\d+)?$/.test(previousOriginal) ? Number(previousOriginal) : undefined;
+    const splitCountSuffixes = new Set(["items in order", "units sold", "sales", "sale", "units"]);
+    if (language === "ar" && quantity !== undefined && previousNode && splitCountSuffixes.has(original.trim())) previousNode.nodeValue = "";
     textNode.nodeValue = translateCopy(original, language, { quantity });
   });
   document.querySelectorAll<HTMLElement>("input[placeholder], textarea[placeholder], [aria-label], [title]").forEach(element => {
