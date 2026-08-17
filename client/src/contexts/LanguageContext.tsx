@@ -553,6 +553,39 @@ const ARABIC_COPY: Record<string, string> = {
   "Choose at least one item to return.": "اختر بندًا واحدًا على الأقل للإرجاع.",
   "Enter a refund amount and reason.": "أدخل مبلغ الاسترداد والسبب.",
   "Discount code could not be applied.": "تعذر تطبيق رمز الخصم.",
+  "Across the last 7 days": "خلال آخر 7 أيام",
+  "Across the last 30 days": "خلال آخر 30 يومًا",
+  "Across the last 90 days": "خلال آخر 90 يومًا",
+  "Across today": "خلال اليوم",
+  "Across all time": "طوال الفترة",
+  "Across the custom period": "خلال الفترة المخصصة",
+  "Across the selected period": "خلال الفترة المحددة",
+  "Orders created in this period": "الطلبات المنشأة في هذه الفترة",
+  "Average transaction value": "متوسط قيمة المعاملة",
+  "Customer relationships on record": "علاقات العملاء المسجلة",
+  "SALE": "البيع",
+  "Sale": "البيع",
+  "Low-stock attention": "تنبيه نقص المخزون",
+  "No low-stock materials are currently flagged.": "لا توجد مواد منخفضة المخزون حاليًا.",
+  "Credit Card": "بطاقة ائتمان",
+  "credit card": "بطاقة ائتمان",
+  "cash": "نقدًا",
+  "bank transfer": "تحويل بنكي",
+  "Walk-in sale": "بيع عميل حاضر",
+  "draft": "مسودة",
+  "confirmed": "مؤكد",
+  "cutting": "قص",
+  "stitching": "خياطة",
+  "fitting": "قياس",
+  "ready": "جاهز",
+  "handed over": "تم التسليم",
+  "cancelled": "ملغى",
+  "piece": "قطعة",
+  "pieces": "قطع",
+  "not selected": "غير محدد",
+  "Tailor not assigned": "لم يُعيّن خياط",
+  "No due date": "لا يوجد تاريخ تسليم",
+  "No order notes.": "لا توجد ملاحظات على الطلب.",
 };
 
 export function getStoredLanguage(): Language {
@@ -564,6 +597,27 @@ export function getStoredLanguage(): Language {
   }
 }
 
+const ARABIC_MONTHS: Record<string, string> = {
+  Jan: "يناير",
+  Feb: "فبراير",
+  Mar: "مارس",
+  Apr: "أبريل",
+  May: "مايو",
+  Jun: "يونيو",
+  Jul: "يوليو",
+  Aug: "أغسطس",
+  Sep: "سبتمبر",
+  Oct: "أكتوبر",
+  Nov: "نوفمبر",
+  Dec: "ديسمبر",
+};
+
+function arabicUnitWord(quantity: number) {
+  if (quantity === 2) return "وحدتين";
+  if (quantity >= 3 && quantity <= 10) return "وحدات";
+  return "وحدة";
+}
+
 export function translateCopy(value: string, language: Language): string {
   if (language === "en") return value;
   const trimmed = value.trim();
@@ -571,9 +625,48 @@ export function translateCopy(value: string, language: Language): string {
   const trailing = value.slice(value.indexOf(trimmed) + trimmed.length);
   if (ARABIC_COPY[trimmed]) return `${leading}${ARABIC_COPY[trimmed]}${trailing}`;
   if (/^BHD\b/.test(trimmed)) return `${leading}${trimmed.replace(/^BHD\b/, "د.ب")}${trailing}`;
+  if (/^Across the (.+)$/.test(trimmed)) {
+    const detail = trimmed.match(/^Across the (.+)$/)?.[1] || "";
+    const arabicDetail: Record<string, string> = {
+      "last 7 days": "آخر 7 أيام",
+      "last 30 days": "آخر 30 يومًا",
+      "last 90 days": "آخر 90 يومًا",
+      today: "اليوم",
+      "all time": "كل الوقت",
+      "custom period": "الفترة المخصصة",
+      "selected period": "الفترة المحددة",
+    };
+    if (arabicDetail[detail]) return `${leading}خلال ${arabicDetail[detail]}${trailing}`;
+  }
   if (/^Version (\d+)$/.test(trimmed)) return `${leading}الإصدار ${trimmed.match(/^Version (\d+)$/)?.[1] || ""}${trailing}`;
   if (/^(\d+) items? in order$/.test(trimmed)) return `${leading}${trimmed.match(/^(\d+) items? in order$/)?.[1] || "0"} صنف في الطلب${trailing}`;
-  if (/^(\d+) units sold$/.test(trimmed)) return `${leading}تم بيع ${trimmed.match(/^(\d+) units sold$/)?.[1] || "0"} وحدة${trailing}`;
+  if (/^(\d+) units sold$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) units sold$/)?.[1] || 0);
+    return `${leading}تم بيع ${quantity} ${arabicUnitWord(quantity)}${trailing}`;
+  }
+  if (/^(\d+) open invoices? included in this balance\.$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) open invoices? included in this balance\.$/)?.[1] || 0);
+    return `${leading}يتضمن هذا الرصيد ${quantity} ${quantity === 1 ? "فاتورة مفتوحة" : "فواتير مفتوحة"}.${trailing}`;
+  }
+  if (/^Fitting version (\d+)$/.test(trimmed)) {
+    return `${leading}إصدار القياس ${trimmed.match(/^Fitting version (\d+)$/)?.[1] || ""}${trailing}`;
+  }
+  if (/^Measurement (\d+) version$/.test(trimmed)) {
+    return `${leading}القياس، الإصدار ${trimmed.match(/^Measurement (\d+) version$/)?.[1] || ""}${trailing}`;
+  }
+  if (/^Due (.+)$/.test(trimmed)) {
+    return `${leading}التسليم ${trimmed.match(/^Due (.+)$/)?.[1] || ""}${trailing}`;
+  }
+  if (/^(\d+) pieces?$/.test(trimmed)) {
+    const quantity = Number(trimmed.match(/^(\d+) pieces?$/)?.[1] || 0);
+    return `${leading}${quantity} ${quantity === 1 ? "قطعة" : "قطع"}${trailing}`;
+  }
+  const dateMatch = trimmed.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(,?\s+\d{4})?(.*)$/);
+  if (dateMatch) {
+    const [, month, day, year = "", remainder = ""] = dateMatch;
+    const localizedRemainder = remainder.replace(/\bAM\b/g, "ص").replace(/\bPM\b/g, "م");
+    return `${leading}${day} ${ARABIC_MONTHS[month]}${year ? ` ${year.trim()}` : ""}${localizedRemainder}${trailing}`;
+  }
   if (/^(.+) · threshold (.+)$/.test(trimmed)) {
     const [, code, threshold] = trimmed.match(/^(.+) · threshold (.+)$/) || [];
     return `${leading}${code} · الحد الأدنى ${threshold}${trailing}`;
@@ -628,7 +721,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     isArabic: language === "ar",
     setLanguage: next => setLanguageState(next),
     toggleLanguage: () => setLanguageState(current => current === "ar" ? "en" : "ar"),
-    t: value => value,
+    t: value => translateCopy(value, language),
   }), [language]);
 
   useEffect(() => {
