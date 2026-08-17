@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import AuthGate from "@/components/AuthGate";
-import { ClipboardList, FileText, LayoutDashboard, LogOut, MoreHorizontal, Package, ReceiptText, Scissors, Settings, ShoppingCart, Users } from "lucide-react";
+import { AlertCircle, ClipboardList, FileText, LayoutDashboard, Loader2, LogOut, MoreHorizontal, Package, ReceiptText, RefreshCw, Scissors, Settings, ShoppingCart, Users, Wifi, WifiOff } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 import { clientBrand } from "@/lib/branding";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useOfflineSync } from "@/contexts/OfflineSyncContext";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 const navigation = [
@@ -23,6 +23,19 @@ const navigation = [
 ];
 
 const mobileNavigation = ["/", "/customers", "/sales", "/tailoring"].map(path => navigation.find(item => item.path === path)!);
+
+function ConnectionStatus() {
+  const { isOnline, pendingCount, isSyncing, syncError, syncNow } = useOfflineSync();
+  const { t } = useLanguage();
+  const label = !isOnline ? "Offline" : isSyncing ? "Syncing…" : "Online";
+  const statusText = pendingCount > 0 ? t(`${pendingCount} offline sale${pendingCount === 1 ? "" : "s"} waiting to sync`) : !isOnline ? t("Sales are saved on this device and will sync when internet returns.") : null;
+  const Icon = !isOnline ? WifiOff : isSyncing ? RefreshCw : syncError ? AlertCircle : Wifi;
+  return <div role="status" aria-live="polite" title={syncError || undefined} className={`flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs ${!isOnline ? "border-amber-300 bg-amber-50 text-amber-950" : syncError ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+    <Icon className={`h-3.5 w-3.5 shrink-0 ${isSyncing ? "animate-spin" : ""}`} />
+    <div className="min-w-0"><p className="font-semibold">{t(label)}</p>{statusText && <p className="max-w-[180px] truncate text-[10px] opacity-80">{statusText}</p>}</div>
+    {pendingCount > 0 && isOnline && !isSyncing && <button type="button" onClick={() => void syncNow()} className="rounded-md p-1 hover:bg-black/5" aria-label={t("Sync now")} title={t("Sync now")}><RefreshCw className="h-3.5 w-3.5" /></button>}
+  </div>;
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, isAuthenticated, logout } = useAuth();
@@ -68,6 +81,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="min-w-0"><p className="truncate text-sm font-semibold">{clientBrand.name}</p><p className="truncate text-xs text-muted-foreground">{currentPage ? t(currentPage.label) : t("Tailor ERP")}</p></div>
         </div>
         <p className="ml-auto hidden text-sm text-muted-foreground lg:block">{t("Secure business workspace")}</p>
+        <ConnectionStatus />
         <div className="ml-auto flex items-center gap-2 lg:hidden">
           <Link href="/team" aria-label={t("Staff & Payroll")} className={`flex h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${isActive("/team") ? "border-primary bg-primary text-primary-foreground" : "bg-white text-foreground"}`}>
             <Users className="h-4 w-4" />

@@ -3,8 +3,9 @@ import { Archive, ArrowLeft, ArrowRight, BadgePercent, Banknote, Check, CheckCir
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { writeInvoiceToPrintWindow } from "@/lib/invoicePrint";
-import { enqueueOfflineSale, listOfflineSales, readOfflineSnapshot, removeOfflineSale, saveOfflineSnapshot, type OfflineCatalogItem } from "@/lib/offlineSalesQueue";
+import { enqueueOfflineSale, readOfflineSnapshot, saveOfflineSnapshot, type OfflineCatalogItem } from "@/lib/offlineSalesQueue";
 import { Button } from "@/components/ui/button";
+import { useOfflineSync } from "@/contexts/OfflineSyncContext";
 import { Textarea } from "@/components/ui/textarea";
 
 type CartLine = { lineKey: string; serviceId?: number; inventoryItemId?: number; name: string; code: string; price: number; unit: string; available: number; quantity: number; lineDiscount: number; discountPercent: number };
@@ -74,10 +75,8 @@ export default function TouchPos() {
   const [keypadBuffer, setKeypadBuffer] = useState("");
   const [sessionSheet, setSessionSheet] = useState<SessionSheet>(null);
   const [sessionCashBuffer, setSessionCashBuffer] = useState("0.000");
-  const [offlinePendingCount, setOfflinePendingCount] = useState(0);
   const [offlineCatalog, setOfflineCatalog] = useState<OfflineCatalogItem[] | null>(null);
-  const [isOffline, setIsOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
-  const offlineSyncingRef = useRef(false);
+  const [offlineShopSettings, setOfflineShopSettings] = useState<{ vatEnabled?: boolean | null; vatRate?: string | number | null } | null>(null);
   const pendingPrintWindow = useRef<Window | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const keypadRef = useRef<HTMLDivElement | null>(null);
@@ -98,6 +97,8 @@ export default function TouchPos() {
   const discountValidation = trpc.pos.discounts.validate.useQuery({ code: discountCode || "NONE", subtotal: Math.max(0, cart.reduce((sum, line) => sum + line.price * line.quantity - line.lineDiscount, 0)) }, { enabled: false });
   const returnLookup = trpc.pos.returns.lookup.useQuery({ saleNumber: returnSearch || "NONE" }, { enabled: returnSearch.trim().length >= 3 });
   const utils = trpc.useUtils();
+  const { isOnline, pendingCount: offlinePendingCount, refreshPendingCount } = useOfflineSync();
+  const isOffline = !isOnline;
   const catalogData = servicesCatalog.data ?? offlineCatalog ?? [];
 
   useEffect(() => {
@@ -105,21 +106,21 @@ export default function TouchPos() {
     void readOfflineSnapshot<OfflineCatalogItem[]>("services").then(snapshot => {
       if (active && snapshot) setOfflineCatalog(snapshot);
     }).catch(() => undefined);
-    const onOnline = () => setIsOffline(false);
-    const onOffline = () => setIsOffline(true);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      active = false;
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
+    void readOfflineSnapshot<{ vatEnabled?: boolean | null; vatRate?: string | number | null }>("shop-settings").then(snapshot => {
+      if (active && snapshot) setOfflineShopSettings(snapshot);
+    }).catch(() => undefined);
+    return () => { active = false; };
   }, []);
   useEffect(() => {
     if (!servicesCatalog.data) return;
     setOfflineCatalog(servicesCatalog.data as OfflineCatalogItem[]);
     void saveOfflineSnapshot("services", servicesCatalog.data).catch(() => undefined);
   }, [servicesCatalog.data]);
+  useEffect(() => {
+    if (!shopSettings.data) return;
+    setOfflineShopSettings(shopSettings.data);
+    void saveOfflineSnapshot("shop-settings", shopSettings.data).catch(() => undefined);
+  }, [shopSettings.data]);
 
   useEffect(() => {
     if (mode === "tailoring" && !measurementProfileId && measurements.data?.length === 1) setMeasurementProfileId(String(measurements.data[0].id));
@@ -176,27 +177,7 @@ export default function TouchPos() {
     onSuccess: async result => { setReturnSearch(""); setReturnQuantities({}); setSelectedReturnItemId(null); await printIssuedInvoice({ invoiceId: result.invoiceId, saleNumber: result.saleNumber, total: result.total }); },
     onError: error => { if (pendingPrintWindow.current && !pendingPrintWindow.current.closed) pendingPrintWindow.current.close(); pendingPrintWindow.current = null; toast.error(error.message); },
   });
-  const refreshOfflineCount = async () => { try { setOfflinePendingCount((await listOfflineSales()).length); } catch { setOfflinePendingCount(0); } };
-  const syncOfflineSales = async () => {
-    if (!navigator.onLine || offlineSyncingRef.current) return;
-    offlineSyncingRef.current = true;
-    try {
-      const queued = await listOfflineSales();
-      if (!queued.length) { setOfflinePendingCount(0); return; }
-      let completed = 0;
-      for (const record of queued) {
-        try {
-          if (record.kind === "checkout") await checkout.mutateAsync(record.input as Parameters<typeof checkout.mutateAsync>[0]);
-          else await quickCheckout.mutateAsync(record.input as Parameters<typeof quickCheckout.mutateAsync>[0]);
-          await removeOfflineSale(record.clientReference);
-          completed += 1;
-        } catch { break; }
-      }
-      await refreshOfflineCount();
-      if (completed) toast.success(`${completed} offline sale${completed === 1 ? "" : "s"} synchronized`);
-    } finally { offlineSyncingRef.current = false; }
-  };
-  useEffect(() => { void refreshOfflineCount(); void syncOfflineSales(); const onOnline = () => { void syncOfflineSales(); }; window.addEventListener("online", onOnline); return () => window.removeEventListener("online", onOnline); }, [session.data?.id]);
+
   const resetTailoringForm = () => { setMeasurementProfileId(""); setAssignedTailorId(""); setGarmentType("Thoub"); setGarmentQuantity(1); setDueDate(""); setOrderPrice(0); setPaymentAmount(0); setOrderNotes(""); setProductionNotes(""); setCustomerSuppliedFabric(false); setFabricNotes(""); };
   const tailoringCheckout = trpc.pos.tailoringCheckout.useMutation({ onSuccess: async ({ invoiceId, saleNumber, total, orderNumber }) => { resetTailoringForm(); await printIssuedInvoice({ invoiceId, saleNumber, total, orderNumber }); }, onError: error => { if (pendingPrintWindow.current && !pendingPrintWindow.current.closed) pendingPrintWindow.current.close(); pendingPrintWindow.current = null; toast.error(error.message); } });
   const autoStartedSessionRef = useRef(false);
@@ -228,7 +209,8 @@ export default function TouchPos() {
   const discountAmount = Math.min(discountBase, discountBase * orderDiscountPercent / 100);
   const appliedCodeAmount = appliedDiscountCode && discountValidation.data?.snapshot === appliedDiscountCode ? Number(discountValidation.data.amount) : 0;
   const netTotal = Math.max(0, subtotal - lineDiscount - discountAmount - appliedCodeAmount);
-  const vatRate = shopSettings.data?.vatEnabled ? Number(shopSettings.data.vatRate || 0) : 0;
+  const activeShopSettings = shopSettings.data ?? offlineShopSettings;
+  const vatRate = activeShopSettings?.vatEnabled ? Number(activeShopSettings.vatRate || 0) : 0;
   const vatAmount = netTotal * vatRate / 100;
   const total = netTotal + vatAmount;
   const paidTotal = paymentLines.reduce((sum, line) => sum + line.amount, 0);
@@ -345,7 +327,7 @@ export default function TouchPos() {
     const input = { sessionId: session.data?.id, heldOrderId, customerId: customerId ? Number(customerId) : undefined, customerName: selectedCustomer?.name || "Walk-in customer", customerPhone: selectedCustomer?.phone, note: orderNote || undefined, discount: discountAmount, discountCode: appliedDiscountCode || undefined, paymentMethod: lines[0]?.method || paymentMethod, paymentStatus: total <= 0 || (lines.length && lines.reduce((sum, line) => sum + line.amount, 0) >= total - 0.001) ? "paid" as const : lines.length ? "partial" as const : "unpaid" as const, payments: lines.map(line => ({ method: line.method, amount: line.amount, reference: line.reference || undefined })), items: cart.map(line => ({ serviceId: line.serviceId, inventoryItemId: line.inventoryItemId, name: line.name, quantity: line.quantity, unitPrice: line.price, lineDiscount: line.lineDiscount })) };
     if (!navigator.onLine) {
       await enqueueOfflineSale("checkout", input);
-      setCart([]); setPaymentLines([]); setRegisterScreen("catalog"); setOrderDiscountPercent(0); setAppliedDiscountCode(""); setDiscountCode(""); setHeldOrderId(undefined); setOrderNote(""); await refreshOfflineCount(); toast.success("Sale saved on this device. It will sync when internet returns."); return;
+      setCart([]); setPaymentLines([]); setRegisterScreen("catalog"); setOrderDiscountPercent(0); setAppliedDiscountCode(""); setDiscountCode(""); setHeldOrderId(undefined); setOrderNote(""); await refreshPendingCount(); toast.success("Sale saved on this device. It will sync when internet returns."); return;
     }
     pendingPrintWindow.current = window.open("", "_blank", "popup,width=900,height=720");
     checkout.mutate(input);
@@ -360,7 +342,7 @@ export default function TouchPos() {
     const input = { sessionId: session.data?.id, customerId: customerId ? Number(customerId) : undefined, customerName: selectedCustomer?.name || "Walk-in customer", customerPhone: selectedCustomer?.phone, amount: walkInAmount, paymentMethod: lines[0]?.method || paymentMethod, note: orderNote || undefined };
     if (!navigator.onLine) {
       await enqueueOfflineSale("quickCheckout", input);
-      setWalkInAmount(0); setPaymentLines([]); setCheckoutContext("cart"); setRegisterScreen("catalog"); await refreshOfflineCount(); toast.success("Walk-in sale saved on this device. It will sync when internet returns."); return;
+      setWalkInAmount(0); setPaymentLines([]); setCheckoutContext("cart"); setRegisterScreen("catalog"); await refreshPendingCount(); toast.success("Walk-in sale saved on this device. It will sync when internet returns."); return;
     }
     pendingPrintWindow.current = window.open("", "_blank", "popup,width=900,height=720");
     quickCheckout.mutate(input);

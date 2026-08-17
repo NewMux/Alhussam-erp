@@ -7,8 +7,10 @@ import { posRouter } from "./pos";
 
 const query = (rows: unknown[]) => ({
   from: () => ({
-    where: () => ({ limit: () => rows }),
+    where: () => ({ orderBy: () => ({ limit: () => rows }), limit: () => rows }),
+    orderBy: () => ({ limit: () => rows }),
     limit: () => rows,
+    innerJoin: () => ({ where: () => ({ limit: () => rows }) }),
   }),
 });
 
@@ -50,6 +52,28 @@ describe("pos.checkout", () => {
     expect(writes[2]).toMatchObject({ inventoryItemId: 81, movementType: "sale", referenceId: 701, quantityChange: "-2.000", quantityAfter: "2.000" });
     expect(writes[3]).toMatchObject({ saleId: 701, method: "benefitpay", amount: "45.000" });
     expect(writes[4]).toMatchObject({ saleId: 701, invoiceNumber: "POS-000701", status: "paid" });
+  });
+
+  it("attaches a replayed checkout without a client session to the resolved open POS session", async () => {
+    const writes: unknown[] = [];
+    const transactionSelectRows = [[{ id: 77, status: "open" }], [{ id: 4, name: "Navy cotton", inventoryItemId: null, defaultFabricMeters: null, unitPrice: "45.000", isActive: true }]];
+    const transactionDb = {
+      insert: vi.fn(() => ({ values: vi.fn((value: unknown) => { writes.push(value); return { returning: () => [{ id: writes.length === 1 ? 703 : 3 }] }; }) })),
+      select: vi.fn(() => query(transactionSelectRows.shift() || [])),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn() })) })),
+    };
+    const rootResponses = [[{ userId: 1, role: "admin", isActive: true }], [], [{ invoicePrefix: "POS" }]];
+    const rootDb = {
+      select: vi.fn(() => query(rootResponses.shift() || [])),
+      insert: vi.fn(() => ({ values: vi.fn() })),
+      transaction: vi.fn(async (callback: (tx: typeof transactionDb) => Promise<unknown>) => callback(transactionDb)),
+    };
+    mocked.getDb.mockResolvedValue(rootDb);
+    const caller = posRouter.createCaller({ user: { id: 1, role: "admin" } } as never);
+
+    await caller.checkout({ clientReference: "offline-session-test", customerName: "Offline client", discount: 0, paymentMethod: "cash", paymentStatus: "paid", items: [{ serviceId: 4, name: "Navy cotton", quantity: 1, unitPrice: 45 }] });
+
+    expect(writes[0]).toMatchObject({ clientReference: "offline-session-test", sessionId: 77 });
   });
 
   it("sells a live inventory material directly without a catalog service dependency", async () => {
